@@ -126,6 +126,8 @@ jobs:
 
       - name: Create or update GitHub release
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           tag_name: ${{ github.ref_name }}
           name: TunnelDesk ${{ github.ref_name }}
