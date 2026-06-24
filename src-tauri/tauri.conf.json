@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "TunnelDesk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.tunneldesk.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -15,10 +15,12 @@
         "title": "TunnelDesk",
         "width": 1180,
         "height": 760,
-        "minWidth": 980,
-        "minHeight": 640,
+        "minWidth": 720,
+        "minHeight": 500,
         "resizable": true,
-        "center": true
+        "center": true,
+        "decorations": false,
+        "shadow": true
       }
     ],
     "security": {

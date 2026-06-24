@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { AppSettings, AppStatus, ProfilesFile, ServiceStatus } from './types'
+import type { AppSettings, AppStatus, ProfilesFile, ServiceStatus } from '@/shared/types'
 
 export const api = {
   loadSettings: () => invoke<AppSettings>('load_settings'),

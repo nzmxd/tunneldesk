@@ -76,13 +76,18 @@ pub fn run() {
 
 #[cfg(not(all(target_os = "linux", target_arch = "x86")))]
 fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show", "Open TunnelDesk", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "打开 TunnelDesk", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
     let app_handle = app.handle().clone();
+    let icon = app.default_window_icon().cloned();
 
-    TrayIconBuilder::new()
-        .menu(&menu)
+    let mut builder = TrayIconBuilder::new().menu(&menu);
+    if let Some(icon) = icon {
+        builder = builder.icon(icon);
+    }
+
+    builder
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "show" => {
                 if let Some(window) = app.get_webview_window("main") {
