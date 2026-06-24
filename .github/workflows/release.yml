@@ -23,12 +23,6 @@ jobs:
             bundles: nsis
             binary: tunneldesk.exe
             experimental: false
-          - name: windows-x86
-            os: windows-latest
-            target: i686-pc-windows-msvc
-            bundles: nsis
-            binary: tunneldesk.exe
-            experimental: false
           - name: windows-arm64
             os: windows-latest
             target: aarch64-pc-windows-msvc
@@ -67,15 +61,6 @@ jobs:
         if: matrix.name == 'linux-x64'
         run: sudo apt-get install -y libappindicator3-dev
 
-      - name: Install Linux x86 dependencies
-        if: matrix.name == 'linux-x86'
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y gcc-multilib pkg-config libwebkit2gtk-4.1-dev:i386 librsvg2-dev:i386
-          echo "PKG_CONFIG_ALLOW_CROSS=1" >> "$GITHUB_ENV"
-          echo "PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> "$GITHUB_ENV"
-
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -94,13 +79,19 @@ jobs:
       - name: Build Tauri bundle
         run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --ci
 
-      - name: Upload bundle artifacts
+      - name: Upload portable executable
         uses: actions/upload-artifact@v4
         with:
-          name: tunneldesk-${{ matrix.name }}
+          name: tunneldesk-${{ matrix.name }}-portable
+          if-no-files-found: error
+          path: src-tauri/target/${{ matrix.target }}/release/${{ matrix.binary }}
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunneldesk-${{ matrix.name }}-installer
           if-no-files-found: error
           path: |
-            src-tauri/target/${{ matrix.target }}/release/${{ matrix.binary }}
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
             src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
@@ -118,14 +109,139 @@ jobs:
       - name: Prepare release assets
         shell: bash
         run: |
+          set -euo pipefail
+          shopt -s nullglob
+
           mkdir -p release-assets
-          while IFS= read -r -d '' file; do
-            relative="${file#dist-artifacts/}"
-            artifact="${relative%%/*}"
-            base="$(basename "$file")"
-            cp "$file" "release-assets/${artifact}-${base}"
-          done < <(find dist-artifacts -type f -print0)
+          version="${GITHUB_REF_NAME}"
+
+          while IFS= read -r -d '' artifact_dir; do
+            artifact="$(basename "$artifact_dir")"
+            platform="${artifact#tunneldesk-}"
+
+            case "$artifact" in
+              tunneldesk-*-portable)
+                platform="${platform%-portable}"
+                mapfile -d '' portable_files < <(find "$artifact_dir" -type f -print0)
+
+                if [ "${#portable_files[@]}" -ne 1 ]; then
+                  echo "::error::Expected one portable executable in $artifact_dir, found ${#portable_files[@]}"
+                  exit 1
+                fi
+
+                stage_dir="$(mktemp -d)"
+                if [[ "$platform" == windows-* ]]; then
+                  cp "${portable_files[0]}" "$stage_dir/tunneldesk.exe"
+                  (cd "$stage_dir" && python3 -m zipfile -c "$GITHUB_WORKSPACE/release-assets/tunneldesk-${version}-${platform}-portable.zip" tunneldesk.exe)
+                else
+                  cp "${portable_files[0]}" "$stage_dir/tunneldesk"
+                  chmod 755 "$stage_dir/tunneldesk"
+                  tar -czf "release-assets/tunneldesk-${version}-${platform}-portable.tar.gz" -C "$stage_dir" tunneldesk
+                fi
+                rm -rf "$stage_dir"
+                ;;
+
+              tunneldesk-*-installer)
+                platform="${platform%-installer}"
+
+                while IFS= read -r -d '' file; do
+                  base="$(basename "$file")"
+                  lower="${base,,}"
+
+                  case "$lower" in
+                    *.exe) asset="tunneldesk-${version}-${platform}-setup.exe" ;;
+                    *.msi) asset="tunneldesk-${version}-${platform}-setup.msi" ;;
+                    *.deb) asset="tunneldesk-${version}-${platform}.deb" ;;
+                    *.appimage) asset="tunneldesk-${version}-${platform}.AppImage" ;;
+                    *.dmg) asset="tunneldesk-${version}-${platform}.dmg" ;;
+                    *.rpm) asset="tunneldesk-${version}-${platform}.rpm" ;;
+                    *)
+                      echo "Skipping non-installer file: $file"
+                      continue
+                      ;;
+                  esac
+
+                  cp "$file" "release-assets/$asset"
+                done < <(find "$artifact_dir" -type f -print0)
+                ;;
+            esac
+          done < <(find dist-artifacts -mindepth 1 -maxdepth 1 -type d -print0)
+
           test -n "$(find release-assets -type f -print -quit)"
+
+      - name: Remove previous release assets
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          status="$(curl -sS -o release.json -w '%{http_code}' \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME")"
+
+          if [ "$status" = "404" ]; then
+            echo "No existing release assets to remove for $GITHUB_REF_NAME"
+            exit 0
+          fi
+
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            cat release.json
+            echo "::error::Failed to fetch existing release assets: HTTP $status"
+            exit 1
+          fi
+
+          release_id="$(python3 - <<'PY'
+          import json
+
+          with open("release.json", encoding="utf-8") as release_file:
+              release = json.load(release_file)
+
+          print(release["id"])
+          PY
+          )"
+
+          page=1
+          : > asset-ids.txt
+          while :; do
+            curl -fsSL \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100&page=$page" \
+              -o "assets-page-$page.json"
+
+            count="$(python3 - "$page" <<'PY'
+          import json
+          import sys
+
+          page = sys.argv[1]
+
+          with open(f"assets-page-{page}.json", encoding="utf-8") as assets_file:
+              assets = json.load(assets_file)
+
+          with open("asset-ids.txt", "a", encoding="utf-8") as asset_ids_file:
+              for asset in assets:
+                  print(asset["id"], file=asset_ids_file)
+
+          print(len(assets))
+          PY
+          )"
+
+            [ "$count" != "0" ] || break
+            page="$((page + 1))"
+          done
+
+          while IFS= read -r asset_id; do
+            [ -n "$asset_id" ] || continue
+            curl -fsSL -X DELETE \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+          done < asset-ids.txt
 
       - name: Create or update GitHub release
         uses: softprops/action-gh-release@v2
