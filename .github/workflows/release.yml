@@ -41,12 +41,6 @@ jobs:
             bundles: deb,appimage
             binary: tunneldesk
             experimental: false
-          - name: linux-x86
-            os: ubuntu-22.04
-            target: i686-unknown-linux-gnu
-            bundles: deb
-            binary: tunneldesk
-            experimental: true
           - name: macos-x64
             os: macos-latest
             target: x86_64-apple-darwin
@@ -131,16 +125,10 @@ jobs:
           test -n "$(find release-assets -type f -print -quit)"
 
       - name: Create or update GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" release-assets/* \
-              --title "TunnelDesk ${GITHUB_REF_NAME#v}" \
-              --generate-notes \
-              --verify-tag
-          fi
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: TunnelDesk ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release-assets/*
+          fail_on_unmatched_files: true
