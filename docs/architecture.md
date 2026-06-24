@@ -16,23 +16,33 @@ This keeps existing proxy software untouched and lets applications keep their or
 
 - `config`: JSON settings and profile persistence.
 - `credential`: OS credential store wrapper.
-- `hosts`: Windows hosts marker block management.
+- `hosts`: platform hosts marker block management.
 - `tunnel`: local listeners and SSH `direct-tcpip` forwarding.
 - `health`: status and diagnostics.
 - `validation`: backend-side settings and profile validation.
 
 ## Runtime Data
 
-TunnelDesk stores all mutable user data in `%APPDATA%\TunnelDesk` so the repository stays generic:
+TunnelDesk stores all mutable user data in the per-user data directory so the repository stays generic:
 
 - `settings.json` contains the SSH host, port, username, selected profile, and non-secret behavior flags.
 - `profiles.json` contains user-managed service mappings.
-- secrets are stored in Windows Credential Manager through `keyring`.
-- hosts backups are created in `%APPDATA%\TunnelDesk\backups` before every hosts write.
+- secrets are stored through the platform keyring under backend-derived tunnel keys.
+- hosts backups are created in the app `backups` directory before every hosts write.
+
+## Credential Boundary
+
+TunnelDesk follows the same high-level split used by desktop SSH managers such as Xshell and SecureCRT: tunnel/session metadata is persisted as normal configuration, while password values live in the operating-system credential store.
+
+- The frontend never receives saved password values.
+- The frontend cannot choose arbitrary credential keys; it calls tunnel-scoped commands such as `save_tunnel_password`.
+- The backend derives password keys as `TunnelDesk:tunnel:{tunnelId}:password`.
+- Loading old settings copies legacy password credentials to the stable tunnel key when possible, then normalizes the stored reference.
+- Logs and exported JSON do not include password values.
 
 ## Privilege Boundary
 
-Editing `C:\Windows\System32\drivers\etc\hosts` requires administrator privileges. The app should be launched elevated for start/repair operations. Normal configuration editing can run without elevation.
+Editing the hosts file requires elevated privileges: `C:\Windows\System32\drivers\etc\hosts` on Windows and `/etc/hosts` on Linux. The app should be launched with the required privilege for start/repair operations. Normal configuration editing can run without elevation.
 
 ## Validation
 

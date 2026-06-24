@@ -2,6 +2,17 @@ use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "TunnelDesk";
 pub const DEFAULT_PROFILE_ID: &str = "default";
+pub const DEFAULT_TUNNEL_ID: &str = "default";
+pub const SETTINGS_SCHEMA_VERSION: u32 = 2;
+pub const PROFILES_SCHEMA_VERSION: u32 = 2;
+
+pub fn default_tunnel_id() -> String {
+    String::from(DEFAULT_TUNNEL_ID)
+}
+
+fn default_theme_mode() -> ThemeMode {
+    ThemeMode::System
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -9,6 +20,14 @@ pub enum AuthMethod {
     Password,
     PrivateKey,
     Agent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ThemeMode {
+    System,
+    Light,
+    Dark,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,16 +64,45 @@ impl Default for SshSettings {
 #[serde(rename_all = "camelCase")]
 pub struct BehaviorSettings {
     pub start_minimized: bool,
+    #[serde(default)]
+    pub auto_start_profile: bool,
+    #[serde(default)]
+    pub launch_at_login: bool,
     pub auto_repair_on_start: bool,
     pub cleanup_on_exit: bool,
+    #[serde(default = "default_theme_mode")]
+    pub theme_mode: ThemeMode,
 }
 
 impl Default for BehaviorSettings {
     fn default() -> Self {
         Self {
             start_minimized: false,
+            auto_start_profile: false,
+            launch_at_login: false,
             auto_repair_on_start: false,
             cleanup_on_exit: true,
+            theme_mode: ThemeMode::System,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TunnelConfig {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub ssh: SshSettings,
+}
+
+impl Default for TunnelConfig {
+    fn default() -> Self {
+        Self {
+            id: String::from(DEFAULT_TUNNEL_ID),
+            name: String::from("Default Tunnel"),
+            enabled: true,
+            ssh: SshSettings::default(),
         }
     }
 }
@@ -64,16 +112,21 @@ impl Default for BehaviorSettings {
 pub struct AppSettings {
     pub schema_version: u32,
     pub current_profile_id: String,
-    pub ssh: SshSettings,
+    #[serde(default = "default_tunnel_id")]
+    pub current_tunnel_id: String,
+    #[serde(default)]
+    pub tunnels: Vec<TunnelConfig>,
+    #[serde(default)]
     pub behavior: BehaviorSettings,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            schema_version: 1,
+            schema_version: SETTINGS_SCHEMA_VERSION,
             current_profile_id: String::from(DEFAULT_PROFILE_ID),
-            ssh: SshSettings::default(),
+            current_tunnel_id: String::from(DEFAULT_TUNNEL_ID),
+            tunnels: vec![TunnelConfig::default()],
             behavior: BehaviorSettings::default(),
         }
     }
@@ -87,6 +140,8 @@ pub struct ServiceConfig {
     pub domain: String,
     pub port: u16,
     pub local_ip: String,
+    #[serde(default = "default_tunnel_id")]
+    pub tunnel_id: String,
     pub enabled: bool,
 }
 
@@ -109,7 +164,7 @@ pub struct ProfilesFile {
 impl Default for ProfilesFile {
     fn default() -> Self {
         Self {
-            schema_version: 1,
+            schema_version: PROFILES_SCHEMA_VERSION,
             profiles: vec![ServiceProfile {
                 id: String::from(DEFAULT_PROFILE_ID),
                 name: String::from("Default Profile"),
@@ -140,9 +195,20 @@ pub struct ServiceStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TunnelStatus {
+    pub tunnel_id: String,
+    pub name: String,
+    pub running: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppStatus {
     pub running: bool,
     pub current_profile_id: String,
+    pub running_tunnel_ids: Vec<String>,
+    pub tunnels: Vec<TunnelStatus>,
     pub is_admin: bool,
     pub hosts_block_present: bool,
     pub message: String,
@@ -154,17 +220,12 @@ impl Default for AppStatus {
         Self {
             running: false,
             current_profile_id: String::from(DEFAULT_PROFILE_ID),
+            running_tunnel_ids: Vec::new(),
+            tunnels: Vec::new(),
             is_admin: false,
             hosts_block_present: false,
             message: String::from("Stopped"),
             services: Vec::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SecretPayload {
-    pub key: String,
-    pub value: String,
 }

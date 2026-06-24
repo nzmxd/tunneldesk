@@ -12,7 +12,11 @@ const BEGIN_MARKER: &str = "# BEGIN TUNNELDESK";
 const END_MARKER: &str = "# END TUNNELDESK";
 
 pub fn hosts_path() -> PathBuf {
-    PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
+    if cfg!(target_os = "windows") {
+        PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
+    } else {
+        PathBuf::from("/etc/hosts")
+    }
 }
 
 pub fn can_write_hosts() -> bool {
@@ -60,7 +64,10 @@ fn backup_hosts() -> AppResult<()> {
 }
 
 fn flush_dns() {
+    #[cfg(target_os = "windows")]
     let _ = Command::new("ipconfig").arg("/flushdns").output();
+    #[cfg(target_os = "linux")]
+    let _ = Command::new("resolvectl").arg("flush-caches").output();
 }
 
 pub fn render_block(services: &[ServiceConfig]) -> String {

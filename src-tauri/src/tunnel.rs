@@ -10,7 +10,7 @@ use tokio::task::JoinHandle;
 use tracing::{error, info};
 
 use crate::error::{AppError, AppResult};
-use crate::model::{AuthMethod, ServiceConfig, ServiceProfile, SshSettings};
+use crate::model::{AuthMethod, ServiceConfig, SshSettings, TunnelConfig};
 
 #[derive(Clone)]
 struct ClientHandler;
@@ -26,15 +26,15 @@ impl client::Handler for ClientHandler {
 }
 
 pub struct TunnelRuntime {
-    profile_id: String,
+    tunnel_id: String,
     stop_tx: broadcast::Sender<()>,
     listener_tasks: Vec<JoinHandle<()>>,
     ssh: Arc<client::Handle<ClientHandler>>,
 }
 
 impl TunnelRuntime {
-    pub fn profile_id(&self) -> &str {
-        &self.profile_id
+    pub fn tunnel_id(&self) -> &str {
+        &self.tunnel_id
     }
 
     pub async fn stop(self) {
@@ -63,15 +63,13 @@ pub async fn test_ssh(settings: &SshSettings, password: Option<String>) -> AppRe
 }
 
 pub async fn start(
-    settings: &SshSettings,
-    profile: ServiceProfile,
+    tunnel: TunnelConfig,
+    services: Vec<ServiceConfig>,
     password: Option<String>,
 ) -> AppResult<TunnelRuntime> {
-    let enabled_services = profile
-        .services
-        .iter()
+    let enabled_services = services
+        .into_iter()
         .filter(|service| service.enabled)
-        .cloned()
         .collect::<Vec<_>>();
     if enabled_services.is_empty() {
         return Err(AppError::Message(String::from(
@@ -79,7 +77,7 @@ pub async fn start(
         )));
     }
 
-    let handle = Arc::new(connect_and_authenticate(settings, password).await?);
+    let handle = Arc::new(connect_and_authenticate(&tunnel.ssh, password).await?);
     let (stop_tx, _) = broadcast::channel(1);
     let mut listener_tasks = Vec::new();
 
@@ -124,7 +122,7 @@ pub async fn start(
     }
 
     Ok(TunnelRuntime {
-        profile_id: profile.id,
+        tunnel_id: tunnel.id,
         stop_tx,
         listener_tasks,
         ssh: handle,
@@ -135,9 +133,11 @@ async fn connect_and_authenticate(
     settings: &SshSettings,
     password: Option<String>,
 ) -> AppResult<client::Handle<ClientHandler>> {
-    let mut config = client::Config::default();
-    config.keepalive_interval = Some(Duration::from_secs(settings.server_alive_interval));
-    config.keepalive_max = settings.server_alive_count_max as usize;
+    let config = client::Config {
+        keepalive_interval: Some(Duration::from_secs(settings.server_alive_interval)),
+        keepalive_max: settings.server_alive_count_max as usize,
+        ..Default::default()
+    };
 
     let addr = format!("{}:{}", settings.host, settings.port);
     let mut handle = client::connect(Arc::new(config), addr, ClientHandler)
