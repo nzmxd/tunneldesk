@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 

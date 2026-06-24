@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::error::{AppError, AppResult};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use crate::model::APP_NAME;
 
 pub fn set_launch_at_login(enabled: bool) -> AppResult<()> {

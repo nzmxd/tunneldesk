@@ -311,7 +311,9 @@ pub fn open_log_dir() -> CommandResult<()> {
     let opener = "explorer";
     #[cfg(target_os = "linux")]
     let opener = "xdg-open";
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     return Err(String::from(
         "Opening log directory is not supported on this platform",
     ));
