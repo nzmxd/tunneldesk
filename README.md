@@ -1,6 +1,6 @@
 # TunnelDesk
 
-TunnelDesk is a Windows/Linux desktop SSH tunnel manager for development services. It lets local applications keep using real service domains and ports, while TunnelDesk maps selected domains to loopback addresses and forwards traffic through one or more SSH jump hosts.
+TunnelDesk is a Windows/Linux/macOS desktop SSH tunnel manager for development services. It lets local applications keep using real service domains and ports, while TunnelDesk maps selected domains to loopback addresses and forwards traffic through one or more SSH jump hosts.
 
 中文文档请见 [README.zh-CN.md](README.zh-CN.md).
 
@@ -31,7 +31,7 @@ TunnelDesk does not enable TUN mode and does not change Clash, Mihomo, system pr
   - `autoStartProfile` starts the current profile after TunnelDesk launches.
 - Backend-side validation for tunnel ids, service ids, ports, loopback addresses, duplicated listeners, and missing tunnel references.
 - CI checks for frontend type safety, production frontend build, Rust formatting, Clippy, and Rust tests.
-- CI packaging for Windows x64/x86/ARM64 and Linux x64/x86.
+- CI packaging for Windows x64/x86/ARM64, Linux x64/x86, and macOS x64/ARM64.
 
 ## Platform Support
 
@@ -42,12 +42,14 @@ TunnelDesk does not enable TUN mode and does not change Clash, Mihomo, system pr
 | Windows ARM64 | Supported in CI | `.exe` + NSIS installer | ARM64 target |
 | Linux x64 | Supported | binary + `.deb` + AppImage | Primary Linux target |
 | Linux x86 | Experimental | binary + `.deb` | GitHub hosted runners have limited 32-bit WebKitGTK coverage |
-| macOS | Not currently configured | None | Can be added later if needed |
+| macOS x64 | Supported in CI | binary + unsigned `.dmg` | Intel target |
+| macOS ARM64 | Supported in CI | binary + unsigned `.dmg` | Apple Silicon target |
 
 Hosts file changes require elevated privileges:
 
 - Windows: `C:\Windows\System32\drivers\etc\hosts`
 - Linux: `/etc/hosts`
+- macOS: `/etc/hosts`
 
 Normal configuration editing does not require elevation, but starting, stopping, or repairing hosts entries may require running the app with the appropriate privilege.
 
@@ -71,6 +73,7 @@ Runtime data is stored in the current user's data directory:
 
 - Windows: `%APPDATA%\TunnelDesk`
 - Linux: `$XDG_DATA_HOME/TunnelDesk` or `~/.local/share/TunnelDesk`
+- macOS: `~/Library/Application Support/TunnelDesk`
 
 Files created there include:
 
@@ -115,7 +118,7 @@ TunnelDesk has two separate startup-related settings:
 - `launchAtLogin`: registers the app with the operating system so TunnelDesk opens after login.
 - `autoStartProfile`: starts the currently selected profile after the app has launched.
 
-On Windows, `launchAtLogin` writes a current-user `Run` registry value. On Linux, it writes a desktop autostart entry under `~/.config/autostart/TunnelDesk.desktop`.
+On Windows, `launchAtLogin` writes a current-user `Run` registry value. On Linux, it writes a desktop autostart entry under `~/.config/autostart/TunnelDesk.desktop`. On macOS, it writes a user LaunchAgent plist under `~/Library/LaunchAgents/com.tunneldesk.app.plist`.
 
 Use both settings together if you want the app to open after login and immediately start the active development profile.
 
@@ -176,6 +179,8 @@ The GitHub Actions workflow in [.github/workflows/ci.yml](.github/workflows/ci.y
   - Windows ARM64: `aarch64-pc-windows-msvc`, release executable + NSIS installer.
   - Linux x64: `x86_64-unknown-linux-gnu`, release binary + `.deb` + AppImage.
   - Linux x86: `i686-unknown-linux-gnu`, release binary + `.deb`, marked experimental.
+  - macOS x64: `x86_64-apple-darwin`, release binary + unsigned `.dmg`.
+  - macOS ARM64: `aarch64-apple-darwin`, release binary + unsigned `.dmg`.
 
 The package workflow is based on the Tauri 2 GitHub Actions distribution approach: [Tauri GitHub pipelines](https://v2.tauri.app/distribute/pipelines/github).
 
@@ -196,7 +201,7 @@ Older settings with a single SSH configuration are migrated to a default tunnel.
 - SSH host key pinning should be added before production use in stricter environments.
 - Only one active profile is supported at a time.
 - Linux x86 packaging is marked experimental in CI.
-- macOS packaging is not configured.
+- macOS packages are unsigned and not notarized.
 - More import/export and team-sharing workflows can be added once the core local model settles.
 
 ## Documentation
