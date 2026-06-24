@@ -11,7 +11,9 @@ mod tunnel;
 mod validation;
 
 use state::AppState;
+#[cfg(not(all(target_os = "linux", target_arch = "x86")))]
 use tauri::menu::{Menu, MenuItem};
+#[cfg(not(all(target_os = "linux", target_arch = "x86")))]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, RunEvent};
 
@@ -22,38 +24,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .setup(|app| {
-            let show = MenuItem::with_id(app, "show", "Open TunnelDesk", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quit])?;
-            let app_handle = app.handle().clone();
+            setup_tray(app)?;
             let startup_handle = app.handle().clone();
-
-            TrayIconBuilder::new()
-                .menu(&menu)
-                .on_menu_event(move |app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
-                })
-                .on_tray_icon_event(move |_tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                })
-                .build(app)?;
 
             let settings = config::load_settings().unwrap_or_default();
             if settings.behavior.start_minimized {
@@ -100,6 +72,48 @@ pub fn run() {
                 tracing::info!("TunnelDesk exiting");
             }
         });
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "x86")))]
+fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show", "Open TunnelDesk", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let app_handle = app.handle().clone();
+
+    TrayIconBuilder::new()
+        .menu(&menu)
+        .on_menu_event(move |app, event| match event.id.as_ref() {
+            "show" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(move |_tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        })
+        .build(app)?;
+
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86"))]
+fn setup_tray(_app: &mut tauri::App) -> tauri::Result<()> {
+    Ok(())
 }
 
 fn init_logging() {

@@ -41,7 +41,7 @@ TunnelDesk does not enable TUN mode and does not change Clash, Mihomo, system pr
 | Windows x86 | Supported in CI | `.exe` + NSIS installer | 32-bit target |
 | Windows ARM64 | Supported in CI | `.exe` + NSIS installer | ARM64 target |
 | Linux x64 | Supported | binary + `.deb` + AppImage | Primary Linux target |
-| Linux x86 | Experimental | binary + `.deb` | GitHub hosted runners have limited 32-bit WebKitGTK coverage |
+| Linux x86 | Experimental | binary + `.deb` | Built without the tray icon because Ubuntu 22.04 does not ship i386 AppIndicator dev packages |
 | macOS x64 | Supported in CI | binary + unsigned `.dmg` | Intel target |
 | macOS ARM64 | Supported in CI | binary + unsigned `.dmg` | Apple Silicon target |
 
@@ -178,9 +178,10 @@ The GitHub Actions workflow in [.github/workflows/ci.yml](.github/workflows/ci.y
   - Windows x86: `i686-pc-windows-msvc`, release executable + NSIS installer.
   - Windows ARM64: `aarch64-pc-windows-msvc`, release executable + NSIS installer.
   - Linux x64: `x86_64-unknown-linux-gnu`, release binary + `.deb` + AppImage.
-  - Linux x86: `i686-unknown-linux-gnu`, release binary + `.deb`, marked experimental.
+  - Linux x86: `i686-unknown-linux-gnu`, release binary + `.deb`, marked experimental and built without the tray icon.
   - macOS x64: `x86_64-apple-darwin`, release binary + unsigned `.dmg`.
   - macOS ARM64: `aarch64-apple-darwin`, release binary + unsigned `.dmg`.
+- Release workflow on `v*` tags publishes the same bundle matrix to a formal GitHub Release.
 
 The package workflow is based on the Tauri 2 GitHub Actions distribution approach: [Tauri GitHub pipelines](https://v2.tauri.app/distribute/pipelines/github).
 
@@ -200,7 +201,7 @@ Older settings with a single SSH configuration are migrated to a default tunnel.
 - Private key and ssh-agent authentication are not implemented yet.
 - SSH host key pinning should be added before production use in stricter environments.
 - Only one active profile is supported at a time.
-- Linux x86 packaging is marked experimental in CI.
+- Linux x86 packaging is marked experimental in CI and disables the tray icon to avoid unavailable i386 AppIndicator packages on Ubuntu 22.04.
 - macOS packages are unsigned and not notarized.
 - More import/export and team-sharing workflows can be added once the core local model settles.
 
