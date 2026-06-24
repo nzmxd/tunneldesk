@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "profiles": [
+    {
+      "id": "us-debug",
+      "name": "US Debug",
+      "enabled": true,
+      "services": [
+        {
+          "id": "example-mysql",
+          "name": "Example MySQL",
+          "domain": "example.mysql.rds.aliyuncs.com",
+          "port": 3306,
+          "localIp": "127.77.0.10",
+          "enabled": true
+        },
+        {
+          "id": "example-redis",
+          "name": "Example Redis",
+          "domain": "example.redis.rds.aliyuncs.com",
+          "port": 6379,
+          "localIp": "127.77.0.20",
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}
