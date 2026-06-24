@@ -181,7 +181,7 @@ The GitHub Actions workflow in [.github/workflows/ci.yml](.github/workflows/ci.y
   - Linux x86: `i686-unknown-linux-gnu`, release binary + `.deb`, marked experimental and built without the tray icon.
   - macOS x64: `x86_64-apple-darwin`, release binary + unsigned `.dmg`.
   - macOS ARM64: `aarch64-apple-darwin`, release binary + unsigned `.dmg`.
-- Release workflow on `v*` tags publishes the same bundle matrix to a formal GitHub Release.
+- Release workflow on `v*` tags publishes the supported bundle matrix to a formal GitHub Release. Linux x86 remains CI experimental and is not included in formal releases until it is stable.
 
 The package workflow is based on the Tauri 2 GitHub Actions distribution approach: [Tauri GitHub pipelines](https://v2.tauri.app/distribute/pipelines/github).
 

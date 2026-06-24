@@ -181,7 +181,7 @@ pnpm tauri:build
   - Linux x86：`i686-unknown-linux-gnu`，release 二进制文件 + `.deb`，标记为实验性且不包含托盘图标。
   - macOS x64：`x86_64-apple-darwin`，release 二进制文件 + 未签名 `.dmg`。
   - macOS ARM64：`aarch64-apple-darwin`，release 二进制文件 + 未签名 `.dmg`。
-- Release workflow 会在推送 `v*` tag 时将同一套打包矩阵发布到正式 GitHub Release。
+- Release workflow 会在推送 `v*` tag 时将正式支持的打包矩阵发布到 GitHub Release。Linux x86 仍保留为 CI 实验目标，稳定前不进入正式发布。
 
 打包流程参考了 Tauri 2 的 GitHub Actions 分发方式：[Tauri GitHub pipelines](https://v2.tauri.app/distribute/pipelines/github)。
 
