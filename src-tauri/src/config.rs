@@ -23,7 +23,17 @@ fn platform_app_dir() -> AppResult<PathBuf> {
     Ok(PathBuf::from(appdata).join(APP_NAME))
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
+fn platform_app_dir() -> AppResult<PathBuf> {
+    let home = std::env::var("HOME")
+        .map_err(|_| crate::error::AppError::Message(String::from("HOME is not set")))?;
+    Ok(PathBuf::from(home)
+        .join("Library")
+        .join("Application Support")
+        .join(APP_NAME))
+}
+
+#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 fn platform_app_dir() -> AppResult<PathBuf> {
     if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
         return Ok(PathBuf::from(data_home).join(APP_NAME));

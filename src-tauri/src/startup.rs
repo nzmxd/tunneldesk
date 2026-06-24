@@ -1,7 +1,9 @@
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::fs;
 #[cfg(target_os = "linux")]
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::path::PathBuf;
 #[cfg(target_os = "windows")]
 use std::process::Command;
 
@@ -18,6 +20,8 @@ pub fn launch_at_login_enabled() -> bool {
 
 #[cfg(target_os = "windows")]
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+#[cfg(target_os = "macos")]
+const MACOS_LAUNCH_AGENT_ID: &str = "com.tunneldesk.app";
 
 #[cfg(target_os = "windows")]
 fn platform_set_launch_at_login(enabled: bool) -> AppResult<()> {
@@ -156,14 +160,86 @@ fn linux_desktop_exec(path: &Path) -> String {
     format!("\"{escaped}\"")
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(target_os = "macos")]
+fn platform_set_launch_at_login(enabled: bool) -> AppResult<()> {
+    let launch_agent = macos_launch_agent_file()?;
+    if !enabled {
+        if launch_agent.exists() {
+            fs::remove_file(launch_agent)?;
+        }
+        return Ok(());
+    }
+
+    if let Some(parent) = launch_agent.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let exe = std::env::current_exe()?;
+    let exe_path = exe.to_string_lossy().to_string();
+    let content = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
+"#,
+        MACOS_LAUNCH_AGENT_ID,
+        macos_plist_escape(&exe_path)
+    );
+    fs::write(launch_agent, content)?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn platform_launch_at_login_enabled() -> bool {
+    let Ok(launch_agent) = macos_launch_agent_file() else {
+        return false;
+    };
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let expected = macos_plist_escape(&exe.to_string_lossy());
+    fs::read_to_string(launch_agent)
+        .map(|content| content.contains(MACOS_LAUNCH_AGENT_ID) && content.contains(&expected))
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_launch_agent_file() -> AppResult<PathBuf> {
+    let home =
+        std::env::var("HOME").map_err(|_| AppError::Message(String::from("HOME is not set")))?;
+    Ok(PathBuf::from(home)
+        .join("Library")
+        .join("LaunchAgents")
+        .join(format!("{MACOS_LAUNCH_AGENT_ID}.plist")))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_plist_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 fn platform_set_launch_at_login(_enabled: bool) -> AppResult<()> {
     Err(AppError::Message(String::from(
         "Launch at login is not supported on this platform",
     )))
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 fn platform_launch_at_login_enabled() -> bool {
     false
 }

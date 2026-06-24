@@ -42,7 +42,7 @@ TunnelDesk follows the same high-level split used by desktop SSH managers such a
 
 ## Privilege Boundary
 
-Editing the hosts file requires elevated privileges: `C:\Windows\System32\drivers\etc\hosts` on Windows and `/etc/hosts` on Linux. The app should be launched with the required privilege for start/repair operations. Normal configuration editing can run without elevation.
+Editing the hosts file requires elevated privileges: `C:\Windows\System32\drivers\etc\hosts` on Windows and `/etc/hosts` on Linux/macOS. The app should be launched with the required privilege for start/repair operations. Normal configuration editing can run without elevation.
 
 ## Validation
 

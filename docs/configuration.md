@@ -4,6 +4,7 @@ TunnelDesk keeps repository defaults generic. Real SSH, tunnel, service, and beh
 
 - Windows: `%APPDATA%\TunnelDesk`
 - Linux: `$XDG_DATA_HOME/TunnelDesk` or `~/.local/share/TunnelDesk`
+- macOS: `~/Library/Application Support/TunnelDesk`
 
 ## App Settings
 
