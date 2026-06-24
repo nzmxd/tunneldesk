@@ -5,6 +5,7 @@ mod error;
 mod health;
 mod hosts;
 mod model;
+mod startup;
 mod state;
 mod tunnel;
 mod validation;
@@ -25,6 +26,7 @@ pub fn run() {
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
             let app_handle = app.handle().clone();
+            let startup_handle = app.handle().clone();
 
             TrayIconBuilder::new()
                 .menu(&menu)
@@ -52,16 +54,37 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            let settings = config::load_settings().unwrap_or_default();
+            if settings.behavior.start_minimized {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+            if settings.behavior.auto_repair_on_start {
+                if let Err(error) = hosts::remove_block() {
+                    tracing::warn!("Failed to repair hosts on startup: {error}");
+                }
+            }
+            if settings.behavior.auto_start_profile {
+                tauri::async_runtime::spawn(async move {
+                    let state = startup_handle.state::<AppState>();
+                    if let Err(error) = commands::start_profile_for_state(state.inner()).await {
+                        tracing::error!("Failed to auto start profile: {error}");
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::load_settings,
             commands::save_settings,
+            commands::set_launch_at_login,
             commands::load_profiles,
             commands::save_profiles,
-            commands::save_secret,
-            commands::delete_secret,
-            commands::has_secret,
+            commands::save_tunnel_password,
+            commands::delete_tunnel_password,
+            commands::has_tunnel_password,
             commands::test_ssh,
             commands::start_profile,
             commands::stop_profile,

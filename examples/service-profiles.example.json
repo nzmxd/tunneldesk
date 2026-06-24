@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "profiles": [
     {
       "id": "us-debug",
@@ -12,6 +12,7 @@
           "domain": "example.mysql.rds.aliyuncs.com",
           "port": 3306,
           "localIp": "127.77.0.10",
+          "tunnelId": "default",
           "enabled": true
         },
         {
@@ -20,6 +21,7 @@
           "domain": "example.redis.rds.aliyuncs.com",
           "port": 6379,
           "localIp": "127.77.0.20",
+          "tunnelId": "default",
           "enabled": true
         }
       ]

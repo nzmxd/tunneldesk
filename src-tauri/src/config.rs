@@ -1,17 +1,39 @@
 use std::fs;
 use std::path::PathBuf;
 
+use crate::credential;
 use crate::error::AppResult;
-use crate::model::{AppSettings, ProfilesFile, APP_NAME};
+use crate::model::{
+    AppSettings, ProfilesFile, APP_NAME, DEFAULT_TUNNEL_ID, PROFILES_SCHEMA_VERSION,
+    SETTINGS_SCHEMA_VERSION,
+};
 
 pub fn app_dir() -> AppResult<PathBuf> {
-    let appdata = std::env::var("APPDATA")
-        .map_err(|_| crate::error::AppError::Message(String::from("APPDATA is not set")))?;
-    let dir = PathBuf::from(appdata).join(APP_NAME);
+    let dir = platform_app_dir()?;
     fs::create_dir_all(&dir)?;
     fs::create_dir_all(dir.join("logs"))?;
     fs::create_dir_all(dir.join("backups"))?;
     Ok(dir)
+}
+
+#[cfg(target_os = "windows")]
+fn platform_app_dir() -> AppResult<PathBuf> {
+    let appdata = std::env::var("APPDATA")
+        .map_err(|_| crate::error::AppError::Message(String::from("APPDATA is not set")))?;
+    Ok(PathBuf::from(appdata).join(APP_NAME))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn platform_app_dir() -> AppResult<PathBuf> {
+    if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
+        return Ok(PathBuf::from(data_home).join(APP_NAME));
+    }
+    let home = std::env::var("HOME")
+        .map_err(|_| crate::error::AppError::Message(String::from("HOME is not set")))?;
+    Ok(PathBuf::from(home)
+        .join(".local")
+        .join("share")
+        .join(APP_NAME))
 }
 
 pub fn settings_path() -> AppResult<PathBuf> {
@@ -31,33 +53,173 @@ pub fn backups_dir() -> AppResult<PathBuf> {
 }
 
 pub fn load_settings() -> AppResult<AppSettings> {
-    read_json_or_default(settings_path()?)
+    read_settings_or_default(settings_path()?)
 }
 
 pub fn save_settings(settings: &AppSettings) -> AppResult<()> {
-    write_json_atomic(settings_path()?, settings)
+    let mut normalized = settings.clone();
+    normalize_settings_credentials(&mut normalized);
+    write_json_atomic(settings_path()?, &normalized)
 }
 
 pub fn load_profiles() -> AppResult<ProfilesFile> {
-    read_json_or_default(profiles_path()?)
+    read_profiles_or_default(profiles_path()?)
 }
 
 pub fn save_profiles(profiles: &ProfilesFile) -> AppResult<()> {
     write_json_atomic(profiles_path()?, profiles)
 }
 
-fn read_json_or_default<T>(path: PathBuf) -> AppResult<T>
-where
-    T: serde::de::DeserializeOwned + serde::Serialize + Default,
-{
+fn read_settings_or_default(path: PathBuf) -> AppResult<AppSettings> {
     if !path.exists() {
-        let value = T::default();
+        let mut value = AppSettings::default();
+        normalize_settings_credentials(&mut value);
         write_json_atomic(path, &value)?;
         return Ok(value);
     }
 
     let content = fs::read_to_string(path)?;
-    Ok(serde_json::from_str(&content)?)
+    let mut value: serde_json::Value = serde_json::from_str(&content)?;
+    migrate_settings_value(&mut value);
+    let mut settings: AppSettings = serde_json::from_value(value)?;
+    migrate_password_credentials(&settings);
+    normalize_settings_credentials(&mut settings);
+    Ok(settings)
+}
+
+fn read_profiles_or_default(path: PathBuf) -> AppResult<ProfilesFile> {
+    if !path.exists() {
+        let value = ProfilesFile::default();
+        write_json_atomic(path, &value)?;
+        return Ok(value);
+    }
+
+    let content = fs::read_to_string(path)?;
+    let mut value: serde_json::Value = serde_json::from_str(&content)?;
+    migrate_profiles_value(&mut value);
+    Ok(serde_json::from_value(value)?)
+}
+
+fn migrate_settings_value(value: &mut serde_json::Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+
+    object.insert(
+        String::from("schemaVersion"),
+        serde_json::Value::from(SETTINGS_SCHEMA_VERSION),
+    );
+
+    let legacy_ssh = object.remove("ssh").unwrap_or_else(default_ssh_value);
+    object
+        .entry(String::from("currentTunnelId"))
+        .or_insert_with(|| serde_json::Value::String(String::from(DEFAULT_TUNNEL_ID)));
+
+    object.entry(String::from("tunnels")).or_insert_with(|| {
+        serde_json::json!([
+            {
+                "id": DEFAULT_TUNNEL_ID,
+                "name": "Default Tunnel",
+                "enabled": true,
+                "ssh": legacy_ssh
+            }
+        ])
+    });
+
+    let behavior = object
+        .entry(String::from("behavior"))
+        .or_insert_with(|| serde_json::json!({}));
+    if let Some(behavior) = behavior.as_object_mut() {
+        behavior
+            .entry(String::from("startMinimized"))
+            .or_insert(serde_json::Value::Bool(false));
+        behavior
+            .entry(String::from("autoStartProfile"))
+            .or_insert(serde_json::Value::Bool(false));
+        behavior
+            .entry(String::from("launchAtLogin"))
+            .or_insert(serde_json::Value::Bool(false));
+        behavior
+            .entry(String::from("autoRepairOnStart"))
+            .or_insert(serde_json::Value::Bool(false));
+        behavior
+            .entry(String::from("cleanupOnExit"))
+            .or_insert(serde_json::Value::Bool(true));
+        behavior
+            .entry(String::from("themeMode"))
+            .or_insert_with(|| serde_json::Value::String(String::from("system")));
+    }
+}
+
+fn migrate_profiles_value(value: &mut serde_json::Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+
+    object.insert(
+        String::from("schemaVersion"),
+        serde_json::Value::from(PROFILES_SCHEMA_VERSION),
+    );
+
+    if let Some(profiles) = object
+        .get_mut("profiles")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for profile in profiles {
+            let Some(profile) = profile.as_object_mut() else {
+                continue;
+            };
+            if let Some(services) = profile
+                .get_mut("services")
+                .and_then(serde_json::Value::as_array_mut)
+            {
+                for service in services {
+                    if let Some(service) = service.as_object_mut() {
+                        service.entry(String::from("tunnelId")).or_insert_with(|| {
+                            serde_json::Value::String(String::from(DEFAULT_TUNNEL_ID))
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn default_ssh_value() -> serde_json::Value {
+    serde_json::json!({
+        "host": "",
+        "port": 22,
+        "username": "",
+        "authMethod": "password",
+        "identityFile": "",
+        "passwordCredentialKey": "",
+        "keyPassphraseCredentialKey": "",
+        "serverAliveInterval": 30,
+        "serverAliveCountMax": 3
+    })
+}
+
+pub fn normalize_settings_credentials(settings: &mut AppSettings) {
+    for tunnel in &mut settings.tunnels {
+        tunnel.ssh.password_credential_key = credential::tunnel_password_key(&tunnel.id);
+    }
+}
+
+fn migrate_password_credentials(settings: &AppSettings) {
+    for tunnel in &settings.tunnels {
+        let legacy_key = tunnel.ssh.password_credential_key.trim();
+        let canonical_key = credential::tunnel_password_key(&tunnel.id);
+        if legacy_key.is_empty()
+            || legacy_key == canonical_key
+            || credential::has_secret(&canonical_key)
+        {
+            continue;
+        }
+
+        if let Ok(value) = credential::get_secret(legacy_key) {
+            let _ = credential::save_secret(&canonical_key, &value);
+        }
+    }
 }
 
 fn write_json_atomic<T>(path: PathBuf, value: &T) -> AppResult<()>
@@ -72,4 +234,97 @@ where
     fs::write(&tmp, content)?;
     fs::rename(tmp, path)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrates_v1_settings_to_default_tunnel() {
+        let mut value = serde_json::json!({
+            "schemaVersion": 1,
+            "currentProfileId": "default",
+            "ssh": {
+                "host": "jump.example.com",
+                "port": 22,
+                "username": "developer",
+                "authMethod": "password",
+                "identityFile": "",
+                "passwordCredentialKey": "legacy-key",
+                "keyPassphraseCredentialKey": "",
+                "serverAliveInterval": 30,
+                "serverAliveCountMax": 3
+            },
+                "behavior": {
+                    "startMinimized": false,
+                    "autoRepairOnStart": false,
+                    "cleanupOnExit": true
+            }
+        });
+
+        migrate_settings_value(&mut value);
+        let settings: AppSettings = serde_json::from_value(value).unwrap();
+
+        assert_eq!(settings.schema_version, SETTINGS_SCHEMA_VERSION);
+        assert_eq!(settings.current_tunnel_id, DEFAULT_TUNNEL_ID);
+        assert_eq!(settings.tunnels.len(), 1);
+        assert_eq!(settings.tunnels[0].ssh.host, "jump.example.com");
+        assert_eq!(
+            settings.tunnels[0].ssh.password_credential_key,
+            "legacy-key"
+        );
+        assert_eq!(
+            settings.behavior.theme_mode,
+            crate::model::ThemeMode::System
+        );
+        assert!(!settings.behavior.auto_start_profile);
+        assert!(!settings.behavior.launch_at_login);
+    }
+
+    #[test]
+    fn normalizes_tunnel_password_keys() {
+        let mut settings = AppSettings::default();
+        settings.tunnels[0].ssh.password_credential_key = String::from("frontend-controlled-key");
+
+        normalize_settings_credentials(&mut settings);
+
+        assert_eq!(
+            settings.tunnels[0].ssh.password_credential_key,
+            "TunnelDesk:tunnel:default:password"
+        );
+    }
+
+    #[test]
+    fn migrates_v1_profiles_to_default_tunnel() {
+        let mut value = serde_json::json!({
+            "schemaVersion": 1,
+            "profiles": [
+                {
+                    "id": "default",
+                    "name": "Default Profile",
+                    "enabled": true,
+                    "services": [
+                        {
+                            "id": "mysql",
+                            "name": "MySQL",
+                            "domain": "mysql.example.internal",
+                            "port": 3306,
+                            "localIp": "127.77.0.10",
+                            "enabled": true
+                        }
+                    ]
+                }
+            ]
+        });
+
+        migrate_profiles_value(&mut value);
+        let profiles: ProfilesFile = serde_json::from_value(value).unwrap();
+
+        assert_eq!(profiles.schema_version, PROFILES_SCHEMA_VERSION);
+        assert_eq!(
+            profiles.profiles[0].services[0].tunnel_id,
+            DEFAULT_TUNNEL_ID
+        );
+    }
 }

@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches: [main]
@@ -34,3 +35,89 @@ jobs:
         working-directory: src-tauri
       - run: cargo test
         working-directory: src-tauri
+
+  package:
+    if: github.event_name != 'pull_request'
+    needs: [frontend, rust]
+    name: package (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            binary: tunneldesk.exe
+            experimental: false
+          - name: windows-x86
+            os: windows-latest
+            target: i686-pc-windows-msvc
+            bundles: nsis
+            binary: tunneldesk.exe
+            experimental: false
+          - name: windows-arm64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+            bundles: nsis
+            binary: tunneldesk.exe
+            experimental: false
+          - name: linux-x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+            binary: tunneldesk
+            experimental: false
+          - name: linux-x86
+            os: ubuntu-22.04
+            target: i686-unknown-linux-gnu
+            bundles: deb
+            binary: tunneldesk
+            experimental: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: startsWith(matrix.name, 'linux-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2
+
+      - name: Install Linux x86 dependencies
+        if: matrix.name == 'linux-x86'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib pkg-config libwebkit2gtk-4.1-dev:i386 libappindicator3-dev:i386 librsvg2-dev:i386
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri bundle
+        env:
+          PKG_CONFIG_ALLOW_CROSS: ${{ matrix.name == 'linux-x86' && '1' || '' }}
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --ci
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunneldesk-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/${{ matrix.binary }}
+            src-tauri/target/${{ matrix.target }}/release/bundle/**

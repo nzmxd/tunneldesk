@@ -1,4 +1,5 @@
 export type AuthMethod = 'password' | 'privateKey' | 'agent'
+export type ThemeMode = 'system' | 'light' | 'dark'
 
 export interface SshSettings {
   host: string
@@ -14,14 +15,25 @@ export interface SshSettings {
 
 export interface BehaviorSettings {
   startMinimized: boolean
+  autoStartProfile: boolean
+  launchAtLogin: boolean
   autoRepairOnStart: boolean
   cleanupOnExit: boolean
+  themeMode: ThemeMode
+}
+
+export interface TunnelConfig {
+  id: string
+  name: string
+  enabled: boolean
+  ssh: SshSettings
 }
 
 export interface AppSettings {
   schemaVersion: number
   currentProfileId: string
-  ssh: SshSettings
+  currentTunnelId: string
+  tunnels: TunnelConfig[]
   behavior: BehaviorSettings
 }
 
@@ -31,6 +43,7 @@ export interface ServiceConfig {
   domain: string
   port: number
   localIp: string
+  tunnelId: string
   enabled: boolean
 }
 
@@ -54,16 +67,20 @@ export interface ServiceStatus {
   message: string
 }
 
+export interface TunnelStatus {
+  tunnelId: string
+  name: string
+  running: boolean
+  message: string
+}
+
 export interface AppStatus {
   running: boolean
   currentProfileId: string
+  runningTunnelIds: string[]
+  tunnels: TunnelStatus[]
   isAdmin: boolean
   hostsBlockPresent: boolean
   message: string
   services: ServiceStatus[]
-}
-
-export interface SecretPayload {
-  key: string
-  value: string
 }
