@@ -31,19 +31,18 @@ TunnelDesk does not enable TUN mode and does not change Clash, Mihomo, system pr
   - `autoStartProfile` starts the current profile after TunnelDesk launches.
 - Backend-side validation for tunnel ids, service ids, ports, loopback addresses, duplicated listeners, and missing tunnel references.
 - CI checks for frontend type safety, production frontend build, Rust formatting, Clippy, and Rust tests.
-- CI packaging for Windows x64/x86/ARM64, Linux x64/x86, and macOS x64/ARM64.
+- CI packaging for Windows x64/ARM64, Linux x64/x86, and macOS x64/ARM64.
 
 ## Platform Support
 
 | Platform | Development | CI Packages | Notes |
 | --- | --- | --- | --- |
-| Windows x64 | Supported | `.exe` + NSIS installer | Primary Windows target |
-| Windows x86 | Supported in CI | `.exe` + NSIS installer | 32-bit target |
-| Windows ARM64 | Supported in CI | `.exe` + NSIS installer | ARM64 target |
-| Linux x64 | Supported | binary + `.deb` + AppImage | Primary Linux target |
+| Windows x64 | Supported | portable `.zip` + NSIS installer | Primary Windows target |
+| Windows ARM64 | Supported in CI | portable `.zip` + NSIS installer | ARM64 target |
+| Linux x64 | Supported | portable `.tar.gz` + `.deb` + AppImage | Primary Linux target |
 | Linux x86 | Experimental | binary + `.deb` | Built without the tray icon because Ubuntu 22.04 does not ship i386 AppIndicator dev packages |
-| macOS x64 | Supported in CI | binary + unsigned `.dmg` | Intel target |
-| macOS ARM64 | Supported in CI | binary + unsigned `.dmg` | Apple Silicon target |
+| macOS x64 | Supported in CI | portable `.tar.gz` + unsigned `.dmg` | Intel target |
+| macOS ARM64 | Supported in CI | portable `.tar.gz` + unsigned `.dmg` | Apple Silicon target |
 
 Hosts file changes require elevated privileges:
 
@@ -174,14 +173,13 @@ The GitHub Actions workflow in [.github/workflows/ci.yml](.github/workflows/ci.y
   - `cargo clippy --all-targets -- -D warnings`
   - `cargo test`
 - Package job on `main` pushes and manual workflow runs:
-  - Windows x64: `x86_64-pc-windows-msvc`, release executable + NSIS installer.
-  - Windows x86: `i686-pc-windows-msvc`, release executable + NSIS installer.
-  - Windows ARM64: `aarch64-pc-windows-msvc`, release executable + NSIS installer.
-  - Linux x64: `x86_64-unknown-linux-gnu`, release binary + `.deb` + AppImage.
+  - Windows x64: `x86_64-pc-windows-msvc`, portable executable `.zip` and NSIS installer are separate artifacts.
+  - Windows ARM64: `aarch64-pc-windows-msvc`, portable executable `.zip` and NSIS installer are separate artifacts.
+  - Linux x64: `x86_64-unknown-linux-gnu`, portable binary `.tar.gz`, `.deb`, and AppImage.
   - Linux x86: `i686-unknown-linux-gnu`, release binary + `.deb`, marked experimental and built without the tray icon.
-  - macOS x64: `x86_64-apple-darwin`, release binary + unsigned `.dmg`.
-  - macOS ARM64: `aarch64-apple-darwin`, release binary + unsigned `.dmg`.
-- Release workflow on `v*` tags publishes the supported bundle matrix to a formal GitHub Release. Linux x86 remains CI experimental and is not included in formal releases until it is stable.
+  - macOS x64: `x86_64-apple-darwin`, portable binary `.tar.gz` and unsigned `.dmg`.
+  - macOS ARM64: `aarch64-apple-darwin`, portable binary `.tar.gz` and unsigned `.dmg`.
+- Release workflow on `v*` tags publishes only portable archives and installer files to a formal GitHub Release. Linux x86 remains CI experimental and is not included in formal releases until it is stable.
 
 The package workflow is based on the Tauri 2 GitHub Actions distribution approach: [Tauri GitHub pipelines](https://v2.tauri.app/distribute/pipelines/github).
 
