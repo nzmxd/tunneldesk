@@ -1,6 +1,6 @@
 {
   "name": "tunneldesk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "packageManager": "pnpm@10.24.0",
   "type": "module",
@@ -21,6 +21,8 @@
     "@ant-design/icons-vue": "^7.0.1",
     "@tauri-apps/api": "^2.6.0",
     "@tauri-apps/plugin-dialog": "^2.3.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@vueuse/core": "^14.3.0",
     "ant-design-vue": "^4.2.6",
     "pinia": "^2.3.1",

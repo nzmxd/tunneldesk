@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "dialog:default",
+    "process:default",
+    "updater:default",
     "core:app:allow-set-app-theme",
     "core:window:allow-close",
     "core:window:allow-hide",

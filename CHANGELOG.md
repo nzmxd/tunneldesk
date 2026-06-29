@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.2 - 2026-06-29
+
+- Added signed in-app update checks and install flow.
+- Added a top bar update button that appears when a newer release is available.
+- Added a manual update check entry in settings.
+- Updated release packaging to publish updater metadata and signatures.
+
 ## v0.1.0 - 2026-06-24
 
 - First formal TunnelDesk release.
