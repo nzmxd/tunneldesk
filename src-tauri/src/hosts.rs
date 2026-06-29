@@ -29,13 +29,13 @@ pub fn can_write_hosts() -> bool {
 
 pub fn block_present() -> bool {
     fs::read_to_string(hosts_path())
-        .map(|content| content.contains(BEGIN_MARKER) && content.contains(END_MARKER))
+        .map(|content| block_present_in_content(&content))
         .unwrap_or(false)
 }
 
 pub fn write_services_block(services: &[ServiceConfig]) -> AppResult<()> {
-    backup_hosts()?;
     let content = fs::read_to_string(hosts_path()).unwrap_or_default();
+    backup_hosts_content(&content)?;
     let block = render_block(services);
     let next = replace_block(&content, Some(&block));
     fs::write(hosts_path(), next)?;
@@ -44,16 +44,27 @@ pub fn write_services_block(services: &[ServiceConfig]) -> AppResult<()> {
 }
 
 pub fn remove_block() -> AppResult<()> {
-    backup_hosts()?;
     let content = fs::read_to_string(hosts_path()).unwrap_or_default();
+    backup_hosts_content(&content)?;
     let next = replace_block(&content, None);
     fs::write(hosts_path(), next)?;
     flush_dns();
     Ok(())
 }
 
-fn backup_hosts() -> AppResult<()> {
+pub fn remove_block_if_present() -> AppResult<bool> {
     let content = fs::read_to_string(hosts_path()).unwrap_or_default();
+    let Some(next) = remove_block_if_present_content(&content) else {
+        return Ok(false);
+    };
+
+    backup_hosts_content(&content)?;
+    fs::write(hosts_path(), next)?;
+    flush_dns();
+    Ok(true)
+}
+
+fn backup_hosts_content(content: &str) -> AppResult<()> {
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
@@ -79,6 +90,29 @@ pub fn render_block(services: &[ServiceConfig]) -> String {
     }
     lines.push(String::from(END_MARKER));
     lines.join("\n")
+}
+
+pub fn block_present_in_content(content: &str) -> bool {
+    let mut begin = None;
+    let mut end = None;
+
+    for (index, line) in content.lines().enumerate() {
+        match line.trim() {
+            BEGIN_MARKER if begin.is_none() => begin = Some(index),
+            END_MARKER if end.is_none() => end = Some(index),
+            _ => {}
+        }
+    }
+
+    matches!((begin, end), (Some(begin), Some(end)) if begin <= end)
+}
+
+pub fn remove_block_if_present_content(content: &str) -> Option<String> {
+    if block_present_in_content(content) {
+        Some(replace_block(content, None))
+    } else {
+        None
+    }
 }
 
 pub fn replace_block(content: &str, block: Option<&str>) -> String {
@@ -127,5 +161,21 @@ mod tests {
         assert!(next.contains("before"));
         assert!(next.contains("after"));
         assert!(!next.contains("127.0.0.1 a"));
+    }
+
+    #[test]
+    fn remove_block_if_present_skips_clean_content() {
+        let content = "before\nafter\n";
+
+        assert!(remove_block_if_present_content(content).is_none());
+    }
+
+    #[test]
+    fn remove_block_if_present_removes_existing_block() {
+        let content = "before\n# BEGIN TUNNELDESK\n127.0.0.1 a\n# END TUNNELDESK\nafter\n";
+        let next = remove_block_if_present_content(content).unwrap();
+
+        assert_eq!(next, "before\nafter\n");
+        assert!(!block_present_in_content(&next));
     }
 }

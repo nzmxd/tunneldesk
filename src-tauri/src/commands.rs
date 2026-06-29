@@ -219,6 +219,7 @@ pub fn get_status(state: State<'_, AppState>) -> CommandResult<AppStatus> {
 }
 
 pub fn get_status_for_state(state: &AppState) -> CommandResult<AppStatus> {
+    let started = std::time::Instant::now();
     let settings = config::load_settings().unwrap_or_default();
     let profiles = config::load_profiles().unwrap_or_default();
     let running_tunnel_ids = state
@@ -244,11 +245,9 @@ pub fn get_status_for_state(state: &AppState) -> CommandResult<AppStatus> {
         .iter()
         .find(|profile| profile.id == current_profile_id)
         .map(|profile| {
-            profile
-                .services
-                .iter()
-                .map(health::service_status)
-                .collect::<Vec<ServiceStatus>>()
+            collect_service_statuses(&profile.services, |service| {
+                health::service_status(&service)
+            })
         })
         .unwrap_or_default();
     let tunnel_statuses = settings
@@ -268,7 +267,7 @@ pub fn get_status_for_state(state: &AppState) -> CommandResult<AppStatus> {
         })
         .collect::<Vec<_>>();
 
-    Ok(AppStatus {
+    let status = AppStatus {
         running,
         current_profile_id,
         running_tunnel_ids,
@@ -281,6 +280,33 @@ pub fn get_status_for_state(state: &AppState) -> CommandResult<AppStatus> {
             String::from("Stopped")
         },
         services,
+    };
+
+    tracing::info!(
+        service_count = status.services.len(),
+        elapsed_ms = started.elapsed().as_millis(),
+        "Status refresh completed"
+    );
+
+    Ok(status)
+}
+
+fn collect_service_statuses<F>(services: &[ServiceConfig], checker: F) -> Vec<ServiceStatus>
+where
+    F: Fn(ServiceConfig) -> ServiceStatus + Sync,
+{
+    std::thread::scope(|scope| {
+        let checker = &checker;
+        let handles = services
+            .iter()
+            .cloned()
+            .map(|service| scope.spawn(move || checker(service)))
+            .collect::<Vec<_>>();
+
+        handles
+            .into_iter()
+            .map(|handle| handle.join().expect("service status worker panicked"))
+            .collect::<Vec<_>>()
     })
 }
 
@@ -368,4 +394,37 @@ fn password_for_tunnel(tunnel: &TunnelConfig) -> Result<Option<String>, AppError
     }
     let key = credential::tunnel_password_key(&tunnel.id);
     Ok(Some(credential::get_secret(&key)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::ServiceState;
+
+    fn service(id: &str) -> ServiceConfig {
+        ServiceConfig {
+            id: String::from(id),
+            name: String::from(id),
+            domain: format!("{id}.example.internal"),
+            port: 3306,
+            local_ip: String::from("127.77.0.10"),
+            tunnel_id: String::from("default"),
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn concurrent_status_collection_returns_each_service() {
+        let services = vec![service("mysql"), service("redis")];
+
+        let statuses = collect_service_statuses(&services, |service| ServiceStatus {
+            service_id: service.id,
+            state: ServiceState::Disabled,
+            message: String::from("checked"),
+        });
+
+        assert_eq!(statuses.len(), 2);
+        assert_eq!(statuses[0].service_id, "mysql");
+        assert_eq!(statuses[1].service_id, "redis");
+    }
 }

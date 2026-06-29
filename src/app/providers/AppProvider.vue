@@ -23,7 +23,7 @@ watch(
 )
 
 onMounted(() => {
-  void store.refresh()
+  void store.bootstrap()
 })
 </script>
 
