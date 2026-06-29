@@ -16,6 +16,8 @@ jobs:
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      CARGO_NET_RETRY: 10
+      CARGO_HTTP_MULTIPLEXING: false
     strategy:
       fail-fast: false
       matrix:
@@ -74,6 +76,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Fetch Rust dependencies
+        shell: pwsh
+        run: |
+          for ($attempt = 1; $attempt -le 4; $attempt++) {
+            cargo fetch --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+            if ($LASTEXITCODE -eq 0) {
+              exit 0
+            }
+
+            if ($attempt -eq 4) {
+              exit $LASTEXITCODE
+            }
+
+            Start-Sleep -Seconds (15 * $attempt)
+          }
 
       - run: pnpm install --frozen-lockfile
 
