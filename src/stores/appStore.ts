@@ -55,6 +55,13 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  function applyConfig(loadedSettings: AppSettings, loadedProfiles: ProfilesFile) {
+    settings.value = normalizeSettings(loadedSettings)
+    profiles.value = normalizeProfiles(loadedProfiles, settings.value.currentTunnelId)
+    ensureCurrentSelections()
+    initialized.value = true
+  }
+
   async function withBusy<T>(action: () => Promise<T>, okMessage: string): Promise<T | undefined> {
     loading.value = true
     clearMessage()
@@ -70,14 +77,34 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  async function refreshStatus() {
+    status.value = normalizeStatus(await api.getStatus())
+  }
+
+  async function refreshPasswordState() {
+    await usePasswordStore().refresh(currentTunnel.value.id)
+  }
+
+  async function bootstrap() {
+    try {
+      const [loadedSettings, loadedProfiles] = await Promise.all([api.loadSettings(), api.loadProfiles()])
+      applyConfig(loadedSettings, loadedProfiles)
+    } catch (error) {
+      setMessage('error', commandErrorMessage(error))
+      return
+    }
+
+    void refreshStatus().catch((error) => {
+      setMessage('error', commandErrorMessage(error))
+    })
+    void refreshPasswordState()
+  }
+
   async function refresh() {
     const [loadedSettings, loadedProfiles, loadedStatus] = await Promise.all([api.loadSettings(), api.loadProfiles(), api.getStatus()])
-    settings.value = normalizeSettings(loadedSettings)
-    profiles.value = normalizeProfiles(loadedProfiles, settings.value.currentTunnelId)
+    applyConfig(loadedSettings, loadedProfiles)
     status.value = normalizeStatus(loadedStatus)
-    ensureCurrentSelections()
-    initialized.value = true
-    await usePasswordStore().refresh(currentTunnel.value.id)
+    await refreshPasswordState()
   }
 
   async function reload() {
@@ -239,7 +266,9 @@ export const useAppStore = defineStore('app', () => {
     activeServices,
     profileTunnelIds,
     clearMessage,
+    bootstrap,
     refresh,
+    refreshStatus,
     reload,
     saveSettingsOnly,
     updateLaunchAtLogin,

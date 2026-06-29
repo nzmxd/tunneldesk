@@ -29,7 +29,7 @@ pub fn service_status(service: &ServiceConfig) -> ServiceStatus {
         }
     };
 
-    match TcpStream::connect_timeout(&socket_addr, Duration::from_millis(800)) {
+    match TcpStream::connect_timeout(&socket_addr, Duration::from_millis(300)) {
         Ok(_) => ServiceStatus {
             service_id: service.id.clone(),
             state: ServiceState::Healthy,

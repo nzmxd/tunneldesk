@@ -55,6 +55,41 @@ describe('appStore', () => {
     expect(mockApi.hasTunnelPassword).toHaveBeenCalledWith('default')
   })
 
+  it('bootstraps config before background status completes', async () => {
+    let resolveStatus: (value: unknown) => void = () => {}
+    const statusPromise = new Promise((resolve) => {
+      resolveStatus = resolve
+    })
+    mockApi.getStatus.mockReturnValue(statusPromise)
+    const store = useAppStore()
+
+    await store.bootstrap()
+
+    expect(store.initialized).toBe(true)
+    expect(mockApi.loadSettings).toHaveBeenCalled()
+    expect(mockApi.loadProfiles).toHaveBeenCalled()
+    expect(mockApi.getStatus).toHaveBeenCalled()
+    expect(store.status.running).toBe(false)
+
+    resolveStatus({ ...defaultStatus(), running: true, runningTunnelIds: ['default'] })
+    await statusPromise
+    await Promise.resolve()
+
+    expect(store.status.running).toBe(true)
+    expect(store.status.runningTunnelIds).toEqual(['default'])
+  })
+
+  it('reload waits for status and updates the store', async () => {
+    mockApi.getStatus.mockResolvedValue({ ...defaultStatus(), running: true, runningTunnelIds: ['default'] })
+    const store = useAppStore()
+
+    await store.reload()
+
+    expect(store.status.running).toBe(true)
+    expect(store.status.runningTunnelIds).toEqual(['default'])
+    expect(store.message).toBe('状态已刷新')
+  })
+
   it('starts and stops the active profile', async () => {
     const store = useAppStore()
 

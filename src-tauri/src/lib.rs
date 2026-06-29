@@ -34,9 +34,23 @@ pub fn run() {
                 }
             }
             if settings.behavior.auto_repair_on_start {
-                if let Err(error) = hosts::remove_block() {
-                    tracing::warn!("Failed to repair hosts on startup: {error}");
-                }
+                std::thread::spawn(|| {
+                    let started = std::time::Instant::now();
+                    match hosts::remove_block_if_present() {
+                        Ok(true) => tracing::info!(
+                            elapsed_ms = started.elapsed().as_millis(),
+                            "Startup hosts repair removed TunnelDesk block"
+                        ),
+                        Ok(false) => tracing::info!(
+                            elapsed_ms = started.elapsed().as_millis(),
+                            "Startup hosts repair skipped; no TunnelDesk block"
+                        ),
+                        Err(error) => tracing::warn!(
+                            elapsed_ms = started.elapsed().as_millis(),
+                            "Failed to repair hosts on startup: {error}"
+                        ),
+                    }
+                });
             }
             if settings.behavior.auto_start_profile {
                 tauri::async_runtime::spawn(async move {
