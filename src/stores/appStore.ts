@@ -265,6 +265,7 @@ export const useAppStore = defineStore('app', () => {
     currentTunnel,
     activeServices,
     profileTunnelIds,
+    setMessage,
     clearMessage,
     bootstrap,
     refresh,

@@ -7,11 +7,14 @@ import {
   PauseCircleOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
+  VerticalAlignTopOutlined,
 } from '@ant-design/icons-vue'
 import { runningLabel } from '@/shared/domain/serviceStatus'
 import { useAppStore } from '@/stores/appStore'
+import { useUpdateStore } from '@/stores/updateStore'
 
 const store = useAppStore()
+const updateStore = useUpdateStore()
 const route = useRoute()
 
 const pageTitle = computed(() => String(route.meta.title || 'TunnelDesk'))
@@ -47,6 +50,17 @@ const activeSummary = computed(() => {
     </div>
 
     <div class="topbar-actions flex shrink-0 items-center justify-end gap-2">
+      <a-button
+        v-if="updateStore.hasAvailableUpdate"
+        type="primary"
+        ghost
+        :loading="updateStore.installing"
+        :disabled="store.loading"
+        @click="updateStore.installAvailableUpdate"
+      >
+        <template #icon><VerticalAlignTopOutlined /></template>
+        {{ updateStore.installButtonText }}
+      </a-button>
       <a-button :disabled="store.loading" @click="store.reload">
         <template #icon><ReloadOutlined /></template>
         刷新

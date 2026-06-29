@@ -4,10 +4,12 @@ import { setTheme } from '@tauri-apps/api/app'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import ToastBridge from './ToastBridge.vue'
 import { useAppStore } from '@/stores/appStore'
+import { useUpdateStore } from '@/stores/updateStore'
 import { useAntdTheme } from '@/app/theme/antdTheme'
 import { useThemeMode } from '@/app/theme/useThemeMode'
 
 const store = useAppStore()
+const updateStore = useUpdateStore()
 const themeMode = computed(() => store.settings.behavior.themeMode)
 const { effectiveTheme } = useThemeMode(themeMode)
 const themeConfig = useAntdTheme(effectiveTheme)
@@ -23,7 +25,7 @@ watch(
 )
 
 onMounted(() => {
-  void store.bootstrap()
+  void store.bootstrap().then(() => updateStore.checkForUpdates({ silent: true }))
 })
 </script>
 
