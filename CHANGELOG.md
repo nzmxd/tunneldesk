@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.3 - 2026-06-29
+
+- Added Cargo dependency fetch retries to make release packaging resilient to transient crates.io network resets.
+
 ## v0.1.2 - 2026-06-29
 
 - Added signed in-app update checks and install flow.
