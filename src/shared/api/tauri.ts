@@ -3,6 +3,7 @@ import type { AppSettings, AppStatus, ProfilesFile, ServiceStatus } from '@/shar
 
 export const api = {
   loadSettings: () => invoke<AppSettings>('load_settings'),
+  launchAtLoginEnabled: () => invoke<boolean>('launch_at_login_enabled'),
   saveSettings: (settings: AppSettings) => invoke<AppSettings>('save_settings', { settings }),
   setLaunchAtLogin: (enabled: boolean) => invoke<boolean>('set_launch_at_login', { enabled }),
   loadProfiles: () => invoke<ProfilesFile>('load_profiles'),

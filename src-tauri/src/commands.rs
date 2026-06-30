@@ -21,9 +21,12 @@ type CommandResult<T> = Result<T, String>;
 
 #[tauri::command]
 pub fn load_settings() -> CommandResult<AppSettings> {
-    let mut settings = config::load_settings().map_err(to_command_error)?;
-    settings.behavior.launch_at_login = startup::launch_at_login_enabled();
-    Ok(settings)
+    config::load_settings().map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn launch_at_login_enabled() -> CommandResult<bool> {
+    Ok(startup::launch_at_login_enabled())
 }
 
 #[tauri::command]
@@ -103,6 +106,7 @@ pub async fn start_profile(state: State<'_, AppState>) -> CommandResult<AppStatu
 }
 
 pub async fn start_profile_for_state(state: &AppState) -> CommandResult<AppStatus> {
+    let started = std::time::Instant::now();
     let already_running = {
         let guard = state
             .tunnels
@@ -124,8 +128,20 @@ pub async fn start_profile_for_state(state: &AppState) -> CommandResult<AppStatu
         .filter(|service| service.enabled)
         .cloned()
         .collect::<Vec<_>>();
+    tracing::info!(
+        service_count = enabled_services.len(),
+        elapsed_ms = started.elapsed().as_millis(),
+        "Start profile config loaded"
+    );
 
+    let hosts_started = std::time::Instant::now();
     hosts::write_services_block(&enabled_services).map_err(to_command_error)?;
+    tracing::info!(
+        service_count = enabled_services.len(),
+        elapsed_ms = hosts_started.elapsed().as_millis(),
+        total_elapsed_ms = started.elapsed().as_millis(),
+        "Start profile hosts updated"
+    );
     let services_by_tunnel = group_services_by_tunnel(enabled_services);
     let tunnels_by_id = settings
         .tunnels
@@ -158,9 +174,17 @@ pub async fn start_profile_for_state(state: &AppState) -> CommandResult<AppStatu
     let mut runtimes = HashMap::new();
 
     for (tunnel_config, services, password) in start_plan {
+        let tunnel_started = std::time::Instant::now();
         match tunnel::start(tunnel_config, services, password).await {
             Ok(runtime) => {
-                runtimes.insert(runtime.tunnel_id().to_string(), runtime);
+                let tunnel_id = runtime.tunnel_id().to_string();
+                tracing::info!(
+                    tunnel_id = %tunnel_id,
+                    elapsed_ms = tunnel_started.elapsed().as_millis(),
+                    total_elapsed_ms = started.elapsed().as_millis(),
+                    "Tunnel runtime started"
+                );
+                runtimes.insert(tunnel_id, runtime);
             }
             Err(error) => {
                 for (_, runtime) in runtimes {
@@ -186,7 +210,12 @@ pub async fn start_profile_for_state(state: &AppState) -> CommandResult<AppStatu
     *active_profile = Some(profile.id.clone());
     drop(active_profile);
 
-    get_status_for_state(state)
+    let status = get_status_for_state(state)?;
+    tracing::info!(
+        elapsed_ms = started.elapsed().as_millis(),
+        "Start profile completed"
+    );
+    Ok(status)
 }
 
 #[tauri::command]
