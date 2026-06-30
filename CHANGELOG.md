@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.4 - 2026-06-30
+
+- Reduced startup work by deferring Windows launch-at-login checks, saved-password checks, and silent updater checks.
+- Skipped redundant hosts rewrites and DNS flushes when the generated TunnelDesk hosts block is unchanged.
+- Added staged timing logs for profile startup to make future launch bottlenecks easier to diagnose.
+
 ## v0.1.3 - 2026-06-29
 
 - Added Cargo dependency fetch retries to make release packaging resilient to transient crates.io network resets.

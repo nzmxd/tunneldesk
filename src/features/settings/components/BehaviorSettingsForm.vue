@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import ThemeSelector from './ThemeSelector.vue'
 import { useAppStore } from '@/stores/appStore'
 import { useUpdateStore } from '@/stores/updateStore'
@@ -9,6 +10,10 @@ const updateStore = useUpdateStore()
 function saveBehavior() {
   void store.saveSettingsOnly('应用设置已保存')
 }
+
+onMounted(() => {
+  void store.refreshLaunchAtLoginState().catch(() => {})
+})
 </script>
 
 <template>

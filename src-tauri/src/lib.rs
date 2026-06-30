@@ -66,6 +66,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::load_settings,
+            commands::launch_at_login_enabled,
             commands::save_settings,
             commands::set_launch_at_login,
             commands::load_profiles,

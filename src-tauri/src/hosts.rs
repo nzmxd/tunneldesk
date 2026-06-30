@@ -35,9 +35,13 @@ pub fn block_present() -> bool {
 
 pub fn write_services_block(services: &[ServiceConfig]) -> AppResult<()> {
     let content = fs::read_to_string(hosts_path()).unwrap_or_default();
-    backup_hosts_content(&content)?;
     let block = render_block(services);
     let next = replace_block(&content, Some(&block));
+    if next == content {
+        return Ok(());
+    }
+
+    backup_hosts_content(&content)?;
     fs::write(hosts_path(), next)?;
     flush_dns();
     Ok(())
@@ -45,8 +49,11 @@ pub fn write_services_block(services: &[ServiceConfig]) -> AppResult<()> {
 
 pub fn remove_block() -> AppResult<()> {
     let content = fs::read_to_string(hosts_path()).unwrap_or_default();
+    let Some(next) = remove_block_if_present_content(&content) else {
+        return Ok(());
+    };
+
     backup_hosts_content(&content)?;
-    let next = replace_block(&content, None);
     fs::write(hosts_path(), next)?;
     flush_dns();
     Ok(())

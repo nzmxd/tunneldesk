@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 import { useAppStore } from '@/stores/appStore'
 import TunnelAdvancedForm from './components/TunnelAdvancedForm.vue'
@@ -6,6 +7,10 @@ import TunnelForm from './components/TunnelForm.vue'
 import TunnelList from './components/TunnelList.vue'
 
 const store = useAppStore()
+
+onMounted(() => {
+  void store.refreshPasswordState()
+})
 </script>
 
 <template>

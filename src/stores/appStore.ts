@@ -85,6 +85,10 @@ export const useAppStore = defineStore('app', () => {
     await usePasswordStore().refresh(currentTunnel.value.id)
   }
 
+  async function refreshLaunchAtLoginState() {
+    settings.value.behavior.launchAtLogin = await api.launchAtLoginEnabled()
+  }
+
   async function bootstrap() {
     try {
       const [loadedSettings, loadedProfiles] = await Promise.all([api.loadSettings(), api.loadProfiles()])
@@ -97,7 +101,6 @@ export const useAppStore = defineStore('app', () => {
     void refreshStatus().catch((error) => {
       setMessage('error', commandErrorMessage(error))
     })
-    void refreshPasswordState()
   }
 
   async function refresh() {
@@ -271,6 +274,8 @@ export const useAppStore = defineStore('app', () => {
     refresh,
     refreshStatus,
     reload,
+    refreshLaunchAtLoginState,
+    refreshPasswordState,
     saveSettingsOnly,
     updateLaunchAtLogin,
     saveTunnel,

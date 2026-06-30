@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { setTheme } from '@tauri-apps/api/app'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import ToastBridge from './ToastBridge.vue'
@@ -13,6 +13,7 @@ const updateStore = useUpdateStore()
 const themeMode = computed(() => store.settings.behavior.themeMode)
 const { effectiveTheme } = useThemeMode(themeMode)
 const themeConfig = useAntdTheme(effectiveTheme)
+let updateCheckTimer: ReturnType<typeof window.setTimeout> | undefined
 
 watch(
   effectiveTheme,
@@ -25,7 +26,17 @@ watch(
 )
 
 onMounted(() => {
-  void store.bootstrap().then(() => updateStore.checkForUpdates({ silent: true }))
+  void store.bootstrap().then(() => {
+    updateCheckTimer = window.setTimeout(() => {
+      void updateStore.checkForUpdates({ silent: true })
+    }, 8000)
+  })
+})
+
+onBeforeUnmount(() => {
+  if (updateCheckTimer) {
+    window.clearTimeout(updateCheckTimer)
+  }
 })
 </script>
 
