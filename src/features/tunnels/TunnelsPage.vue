@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 import { useAppStore } from '@/stores/appStore'
 import TunnelAdvancedForm from './components/TunnelAdvancedForm.vue'
@@ -7,9 +7,18 @@ import TunnelForm from './components/TunnelForm.vue'
 import TunnelList from './components/TunnelList.vue'
 
 const store = useAppStore()
+let passwordStateTimer: ReturnType<typeof window.setTimeout> | undefined
 
 onMounted(() => {
-  void store.refreshPasswordState()
+  passwordStateTimer = window.setTimeout(() => {
+    void store.refreshPasswordState()
+  }, 120)
+})
+
+onBeforeUnmount(() => {
+  if (passwordStateTimer) {
+    window.clearTimeout(passwordStateTimer)
+  }
 })
 </script>
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.5 - 2026-06-30
+
+- Reduced menu switching jank by deferring route navigation work and trimming the settings page component tree.
+- Blocked the default webview context menu in the desktop app.
+- Refreshed the desktop and tray icon set with a reproducible icon generation script.
+
 ## v0.1.4 - 2026-06-30
 
 - Reduced startup work by deferring Windows launch-at-login checks, saved-password checks, and silent updater checks.

@@ -15,6 +15,10 @@ const { effectiveTheme } = useThemeMode(themeMode)
 const themeConfig = useAntdTheme(effectiveTheme)
 let updateCheckTimer: ReturnType<typeof window.setTimeout> | undefined
 
+function preventContextMenu(event: { preventDefault: () => void }) {
+  event.preventDefault()
+}
+
 watch(
   effectiveTheme,
   (value) => {
@@ -26,6 +30,7 @@ watch(
 )
 
 onMounted(() => {
+  document.addEventListener('contextmenu', preventContextMenu, true)
   void store.bootstrap().then(() => {
     updateCheckTimer = window.setTimeout(() => {
       void updateStore.checkForUpdates({ silent: true })
@@ -34,6 +39,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('contextmenu', preventContextMenu, true)
   if (updateCheckTimer) {
     window.clearTimeout(updateCheckTimer)
   }
