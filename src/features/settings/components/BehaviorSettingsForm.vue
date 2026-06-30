@@ -18,11 +18,21 @@ onMounted(() => {
 
 <template>
   <div class="settings-form grid gap-4">
-    <a-card title="主题" :bordered="false">
+    <a-card :bordered="false" class="surface-card">
+      <template #title>
+        <div class="card-title">
+          <span class="card-title-main">主题</span>
+        </div>
+      </template>
       <ThemeSelector />
     </a-card>
 
-    <a-card title="启动行为" :bordered="false">
+    <a-card :bordered="false" class="surface-card">
+      <template #title>
+        <div class="card-title">
+          <span class="card-title-main">启动行为</span>
+        </div>
+      </template>
       <a-list item-layout="horizontal">
         <a-list-item>
           <a-list-item-meta class="min-w-0" title="启动后最小化" />
@@ -39,7 +49,12 @@ onMounted(() => {
       </a-list>
     </a-card>
 
-    <a-card title="hosts 行为" :bordered="false">
+    <a-card :bordered="false" class="surface-card">
+      <template #title>
+        <div class="card-title">
+          <span class="card-title-main">hosts 行为</span>
+        </div>
+      </template>
       <a-list item-layout="horizontal">
         <a-list-item>
           <a-list-item-meta class="min-w-0" title="启动时自动修复 hosts" />
@@ -52,7 +67,12 @@ onMounted(() => {
       </a-list>
     </a-card>
 
-    <a-card title="软件更新" :bordered="false">
+    <a-card :bordered="false" class="surface-card">
+      <template #title>
+        <div class="card-title">
+          <span class="card-title-main">软件更新</span>
+        </div>
+      </template>
       <a-list item-layout="horizontal">
         <a-list-item>
           <a-list-item-meta class="min-w-0" :title="updateStore.updateSummary" />

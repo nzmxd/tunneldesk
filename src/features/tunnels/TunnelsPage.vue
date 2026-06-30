@@ -15,7 +15,7 @@ onMounted(() => {
 
 <template>
   <PageHeader title="隧道" />
-  <div class="grid grid-cols-1 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+  <div class="grid grid-cols-1 gap-4 xl:grid-cols-[316px_minmax(0,1fr)]">
     <TunnelList
       :tunnels="store.settings.tunnels"
       :current-tunnel-id="store.currentTunnel.id"
@@ -24,7 +24,7 @@ onMounted(() => {
       @add="store.addTunnel"
       @remove="store.removeTunnel"
     />
-    <div class="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div class="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
       <TunnelForm />
       <TunnelAdvancedForm />
     </div>

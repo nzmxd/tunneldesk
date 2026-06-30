@@ -34,7 +34,13 @@ async function test() {
 </script>
 
 <template>
-  <a-card title="隧道配置" :bordered="false">
+  <a-card :bordered="false" class="surface-card">
+    <template #title>
+      <div class="card-title">
+        <span class="card-title-main">隧道配置</span>
+        <span class="card-title-meta">{{ store.currentTunnel.name }}</span>
+      </div>
+    </template>
     <a-form ref="formRef" :model="store.currentTunnel" layout="vertical">
       <div class="grid grid-cols-1 gap-x-4 md:grid-cols-2">
         <a-form-item label="名称" name="name" :rules="[requiredRule('请填写隧道名称')]">
@@ -74,14 +80,14 @@ async function test() {
           <a-input v-model:value="store.currentTunnel.ssh.identityFile" />
         </a-form-item>
       </div>
-      <div class="flex flex-wrap justify-end gap-2">
-        <a-button type="primary" :loading="store.loading" @click="save">
-          <template #icon><SaveOutlined /></template>
-          保存
-        </a-button>
+      <div class="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--line-soft)] pt-4">
         <a-button :loading="store.loading" @click="test">
           <template #icon><CheckCircleOutlined /></template>
           测试
+        </a-button>
+        <a-button type="primary" :loading="store.loading" @click="save">
+          <template #icon><SaveOutlined /></template>
+          保存
         </a-button>
       </div>
     </a-form>

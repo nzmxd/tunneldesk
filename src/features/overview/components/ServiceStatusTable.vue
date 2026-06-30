@@ -24,14 +24,20 @@ function statusFor(record: ServiceConfig) {
 </script>
 
 <template>
-  <a-card title="服务状态" :bordered="false">
+  <a-card :bordered="false" class="surface-card">
+    <template #title>
+      <div class="card-title">
+        <span class="card-title-main">服务状态</span>
+        <span class="card-title-meta">{{ services.length }} 个服务</span>
+      </div>
+    </template>
     <a-table
-      size="middle"
+      size="small"
       row-key="id"
       :columns="columns"
       :data-source="services"
       :pagination="false"
-      :scroll="{ x: 760 }"
+      :scroll="{ x: 'max-content' }"
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'domain'">

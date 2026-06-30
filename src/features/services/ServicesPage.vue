@@ -25,7 +25,13 @@ const createOpen = ref(false)
     </template>
   </PageHeader>
 
-  <a-card :bordered="false">
+  <a-card :bordered="false" class="surface-card">
+    <template #title>
+      <div class="card-title">
+        <span class="card-title-main">服务映射</span>
+        <span class="card-title-meta">{{ store.currentProfile.services.length }} 个服务</span>
+      </div>
+    </template>
     <ServicesTable v-if="store.currentProfile.services.length" />
     <EmptyState v-else description="暂无服务配置" />
   </a-card>

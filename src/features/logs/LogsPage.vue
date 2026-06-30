@@ -17,7 +17,12 @@ const store = useAppStore()
     </template>
   </PageHeader>
 
-  <a-card :bordered="false">
+  <a-card :bordered="false" class="surface-card">
+    <template #title>
+      <div class="card-title">
+        <span class="card-title-main">运行摘要</span>
+      </div>
+    </template>
     <a-descriptions bordered size="small" :column="1">
       <a-descriptions-item label="运行状态">{{ runningLabel(store.status.running) }}</a-descriptions-item>
       <a-descriptions-item label="最近消息">{{ store.status.message || '无' }}</a-descriptions-item>

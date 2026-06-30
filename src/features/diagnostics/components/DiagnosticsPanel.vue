@@ -7,7 +7,12 @@ const store = useAppStore()
 </script>
 
 <template>
-  <a-card title="诊断" :bordered="false">
+  <a-card :bordered="false" class="surface-card">
+    <template #title>
+      <div class="card-title">
+        <span class="card-title-main">诊断</span>
+      </div>
+    </template>
     <a-alert
       v-if="!store.status.isAdmin"
       class="mb-4"

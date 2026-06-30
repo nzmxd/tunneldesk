@@ -5,7 +5,12 @@ const store = useAppStore()
 </script>
 
 <template>
-  <a-card title="高级参数" :bordered="false">
+  <a-card :bordered="false" class="surface-card">
+    <template #title>
+      <div class="card-title">
+        <span class="card-title-main">连接保活</span>
+      </div>
+    </template>
     <a-form :model="store.currentTunnel" layout="vertical">
       <a-form-item label="ServerAliveInterval">
         <a-input-number v-model:value="store.currentTunnel.ssh.serverAliveInterval" class="w-full" :min="5" />

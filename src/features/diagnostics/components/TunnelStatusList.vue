@@ -5,7 +5,13 @@ const store = useAppStore()
 </script>
 
 <template>
-  <a-card title="隧道状态" :bordered="false">
+  <a-card :bordered="false" class="surface-card">
+    <template #title>
+      <div class="card-title">
+        <span class="card-title-main">隧道状态</span>
+        <span class="card-title-meta">{{ store.status.tunnels.length }}</span>
+      </div>
+    </template>
     <a-empty v-if="!store.status.tunnels.length" description="暂无隧道状态" />
     <a-list v-else :data-source="store.status.tunnels">
       <template #renderItem="{ item }">
