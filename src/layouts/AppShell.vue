@@ -8,24 +8,24 @@ const collapsed = ref(false)
 </script>
 
 <template>
-  <div class="grid h-full grid-rows-[36px_minmax(0,1fr)] overflow-hidden bg-slate-100 dark:bg-[#101418]">
+  <div class="grid h-full grid-rows-[34px_minmax(0,1fr)] overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)]">
     <AppTitleBar />
-    <a-layout class="min-h-0 min-w-0">
+    <a-layout class="min-h-0 min-w-0 bg-transparent">
       <a-layout-sider
         v-model:collapsed="collapsed"
         breakpoint="lg"
         collapsible
         theme="light"
-        width="236"
-        :collapsed-width="72"
-        class="app-sider border-r border-slate-200 dark:border-slate-800"
+        width="252"
+        :collapsed-width="68"
+        class="app-sider"
       >
         <SidebarNav :collapsed="collapsed" />
       </a-layout-sider>
-      <a-layout class="min-w-0">
+      <a-layout class="min-w-0 bg-transparent">
         <TopBar />
         <a-layout-content class="min-h-0 overflow-hidden">
-          <div class="app-scrollbar h-full overflow-auto px-5 py-5 md:px-7">
+          <div class="app-scrollbar h-full overflow-auto px-4 py-4 md:px-6 md:py-5">
             <RouterView />
           </div>
         </a-layout-content>

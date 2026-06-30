@@ -19,7 +19,7 @@ const columns: TableColumnsType<ServiceConfig> = [
 
 <template>
   <a-table
-    size="middle"
+    size="small"
     row-key="id"
     :columns="columns"
     :data-source="store.currentProfile.services"

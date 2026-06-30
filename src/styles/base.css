@@ -1,6 +1,22 @@
 :root {
-  color: #17202a;
-  background: #eef2f6;
+  color: #18181b;
+  background: #f7f7f8;
+  --app-bg: #f7f7f8;
+  --titlebar-bg: #fbfbfc;
+  --topbar-bg: rgba(251, 251, 252, 0.92);
+  --sidebar-bg: #fbfbfc;
+  --panel-bg: #ffffff;
+  --panel-subtle: #f1f2f4;
+  --line: #dcdee4;
+  --line-soft: #e8e9ee;
+  --text-primary: #18181b;
+  --text-secondary: #3f3f46;
+  --text-muted: #71717a;
+  --brand-bg: #1f2937;
+  --nav-hover-bg: #f0f1f3;
+  --nav-active-bg: #ebedf2;
+  --nav-active-border: rgba(24, 24, 27, 0.08);
+  --focus-ring: rgba(37, 99, 235, 0.18);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
@@ -9,8 +25,24 @@
 }
 
 :root[data-theme="dark"] {
-  color: #edf2f7;
-  background: #101418;
+  color: #f4f4f5;
+  background: #111113;
+  --app-bg: #111113;
+  --titlebar-bg: #151517;
+  --topbar-bg: rgba(21, 21, 23, 0.94);
+  --sidebar-bg: #151517;
+  --panel-bg: #1a1a1d;
+  --panel-subtle: #202024;
+  --line: #303036;
+  --line-soft: #26262b;
+  --text-primary: #f4f4f5;
+  --text-secondary: #d4d4d8;
+  --text-muted: #a1a1aa;
+  --brand-bg: #2563eb;
+  --nav-hover-bg: #202024;
+  --nav-active-bg: #24262c;
+  --nav-active-border: rgba(255, 255, 255, 0.08);
+  --focus-ring: rgba(96, 165, 250, 0.2);
 }
 
 * {
@@ -45,6 +77,11 @@ textarea {
 
 .app-scrollbar {
   scrollbar-width: thin;
+  scrollbar-color: #c5c7d0 transparent;
+}
+
+:root[data-theme="dark"] .app-scrollbar {
+  scrollbar-color: #3f3f46 transparent;
 }
 
 .ant-btn {
@@ -69,31 +106,50 @@ textarea {
 
 .ant-card {
   overflow: hidden;
+  background: var(--panel-bg);
+  border: 1px solid var(--line-soft);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.ant-card-head {
+  min-height: 50px;
+  border-color: var(--line-soft);
+}
+
+.ant-card-head-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ant-card-body {
+  padding: 20px;
 }
 
 .app-sider .ant-layout-sider-children {
   overflow: hidden;
 }
 
-.app-sider.ant-layout-sider-collapsed .ant-menu-item {
-  display: flex;
-  justify-content: center;
-  padding-inline: 0 !important;
+.app-sider,
+.app-sider .ant-layout-sider-trigger {
+  background: var(--sidebar-bg) !important;
+  border-right: 1px solid var(--line-soft);
 }
 
-.app-sider.ant-layout-sider-collapsed .ant-menu-item .ant-menu-title-content {
-  display: none;
+.app-sider .ant-layout-sider-trigger {
+  border-top: 1px solid var(--line-soft);
+  color: var(--text-muted);
 }
 
 .topbar {
-  flex: 0 0 76px;
-  height: 76px;
-  min-height: 76px;
-  max-height: 76px;
+  flex: 0 0 64px;
+  height: 64px;
+  min-height: 64px;
+  max-height: 64px;
+  backdrop-filter: blur(16px);
 }
 
 .topbar-actions .ant-btn {
-  min-width: 108px;
+  min-width: 92px;
 }
 
 .titlebar-button {
@@ -112,7 +168,7 @@ textarea {
 }
 
 .titlebar-button:hover {
-  background: rgba(148, 163, 184, 0.16);
+  background: var(--nav-hover-bg);
 }
 
 .titlebar-button.close:hover {
@@ -120,21 +176,114 @@ textarea {
   background: #c42b1c;
 }
 
-.ant-card-head {
-  min-height: 56px;
+.brand-mark {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--brand-bg);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 
-.ant-card-body {
-  padding: 24px 30px;
+.sidebar-nav-item {
+  display: flex;
+  width: 100%;
+  height: 38px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: default;
+  text-align: left;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.sidebar-nav-item:hover {
+  color: var(--text-primary);
+  background: var(--nav-hover-bg);
+}
+
+.sidebar-nav-item-active {
+  color: var(--text-primary);
+  background: var(--nav-active-bg);
+  box-shadow: inset 0 0 0 1px var(--nav-active-border);
+}
+
+.sidebar-nav-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-end: 0;
+  border-radius: 999px;
+}
+
+@media (max-width: 640px) {
+  .optional-status-chip {
+    display: none;
+  }
+}
+
+.surface-card.ant-card,
+.metric-card.ant-card {
+  border-color: var(--line-soft);
+}
+
+.surface-card .ant-card-head,
+.metric-card .ant-card-head {
+  background: transparent;
+}
+
+.card-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-title-main {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-title-meta {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.metric-card .ant-card-body {
+  padding: 18px;
 }
 
 .ant-form-item {
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .ant-list-item {
-  padding-block: 16px;
-  gap: 16px;
+  padding-block: 14px;
+  gap: 14px;
 }
 
 .settings-form .ant-list-item {
@@ -145,47 +294,31 @@ textarea {
   flex: 0 0 auto;
 }
 
-:root[data-theme="dark"] .ant-layout,
-:root[data-theme="dark"] .ant-layout-content {
-  background: #101418;
-}
-
-:root[data-theme="dark"] .ant-layout-sider,
-:root[data-theme="dark"] .ant-layout-sider-trigger {
-  background: #171c22 !important;
-}
-
-:root[data-theme="dark"] .ant-menu-light {
-  background: transparent;
-  color: #cbd5e1;
-}
-
-:root[data-theme="dark"] .ant-menu-light .ant-menu-item {
-  color: #cbd5e1;
-}
-
-:root[data-theme="dark"] .ant-menu-light .ant-menu-item-selected {
-  color: #5eead4;
-  background: rgba(20, 184, 166, 0.12);
-}
-
-:root[data-theme="dark"] .ant-menu-light .ant-menu-item:hover {
-  color: #99f6e4;
-  background: rgba(20, 184, 166, 0.08);
-}
-
 :root[data-theme="dark"] .ant-card {
-  background: #171c22;
-  border-color: #26313c;
+  box-shadow: none;
 }
 
-:root[data-theme="dark"] .ant-card-head {
-  color: #edf2f7;
-  border-color: #26313c;
-}
-
+:root[data-theme="dark"] .ant-card-head,
 :root[data-theme="dark"] .ant-list .ant-list-item {
-  border-color: #26313c;
+  border-color: var(--line-soft);
+}
+
+.ant-table-wrapper .ant-table {
+  border-radius: 8px;
+}
+
+.ant-table-thead > tr > th {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ant-input,
+.ant-input-number,
+.ant-select-selector,
+.ant-segmented,
+.ant-drawer-content {
+  border-radius: 8px;
 }
 
 @media (max-width: 768px) {

@@ -5,5 +5,7 @@ defineProps<{
 </script>
 
 <template>
-  <a-empty :description="description" />
+  <div class="py-10">
+    <a-empty :description="description" />
+  </div>
 </template>

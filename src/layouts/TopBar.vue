@@ -26,26 +26,30 @@ const activeSummary = computed(() => {
 
 <template>
   <div
-    class="topbar flex h-[76px] shrink-0 items-center justify-between gap-4 overflow-hidden border-b border-slate-200 bg-white px-5 dark:border-slate-800 dark:bg-[#171c22] lg:px-6"
+    class="topbar flex shrink-0 items-center justify-between gap-4 overflow-hidden border-b border-[var(--line-soft)] bg-[var(--topbar-bg)] px-4 md:px-5"
   >
-    <div class="flex min-w-0 items-center gap-4">
-      <h1 class="m-0 shrink-0 text-xl font-semibold leading-7 text-slate-950 dark:text-slate-100">{{ pageTitle }}</h1>
-      <div class="flex min-w-0 items-center gap-2 overflow-hidden">
-        <a-tag :color="store.status.running ? 'success' : 'warning'">
+    <div class="flex min-w-0 flex-col justify-center">
+      <div class="flex min-w-0 items-center gap-2 text-xs text-[var(--text-muted)]">
+        <span class="shrink-0">TunnelDesk</span>
+        <span>/</span>
+        <span class="truncate font-medium text-[var(--text-secondary)]">{{ pageTitle }}</span>
+      </div>
+      <div class="mt-1 flex min-w-0 items-center gap-2 overflow-hidden">
+        <a-tag class="status-chip" :color="store.status.running ? 'success' : 'warning'">
           <template #icon>
             <CheckCircleOutlined v-if="store.status.running" />
             <PauseCircleOutlined v-else />
           </template>
           {{ runningText }}
         </a-tag>
-        <a-tag :color="store.status.isAdmin ? 'success' : 'warning'">
+        <a-tag class="status-chip optional-status-chip" :color="store.status.isAdmin ? 'success' : 'warning'">
           <template #icon>
             <CheckCircleOutlined v-if="store.status.isAdmin" />
             <CloseCircleOutlined v-else />
           </template>
           {{ store.status.isAdmin ? '管理员权限' : '非管理员' }}
         </a-tag>
-        <span class="min-w-0 truncate text-sm text-slate-500 dark:text-slate-400">{{ activeSummary }}</span>
+        <span class="min-w-0 truncate text-sm text-[var(--text-muted)]">{{ activeSummary }}</span>
       </div>
     </div>
 
