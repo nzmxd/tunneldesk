@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined,
@@ -10,18 +10,20 @@ import {
   SettingOutlined,
 } from '@ant-design/icons-vue'
 import { useAppStore } from '@/stores/appStore'
+import type { RouteKey } from '@/app/router/routes'
 
 const route = useRoute()
 const router = useRouter()
 const store = useAppStore()
+const pendingKey = ref<RouteKey | null>(null)
+let navigationFrame: number | undefined
+let navigationTimer: ReturnType<typeof window.setTimeout> | undefined
 
 defineProps<{
   collapsed: boolean
 }>()
 
-const selectedKey = computed(() => String(route.name || 'overview'))
-
-const navItems = [
+const navItems: { key: RouteKey; icon: Component; label: string }[] = [
   { key: 'overview', icon: AppstoreOutlined, label: '总览' },
   { key: 'tunnels', icon: ApiOutlined, label: '隧道' },
   { key: 'services', icon: DatabaseOutlined, label: '服务' },
@@ -30,9 +32,45 @@ const navItems = [
   { key: 'settings', icon: SettingOutlined, label: '设置' },
 ]
 
-function go(key: string) {
-  void router.push({ name: key })
+const currentKey = computed<RouteKey>(() => {
+  const routeName = String(route.name || 'overview')
+  return navItems.some((item) => item.key === routeName) ? (routeName as RouteKey) : 'overview'
+})
+
+const selectedKey = computed(() => pendingKey.value || currentKey.value)
+
+function clearScheduledNavigation() {
+  if (navigationFrame !== undefined) {
+    window.cancelAnimationFrame(navigationFrame)
+    navigationFrame = undefined
+  }
+  if (navigationTimer !== undefined) {
+    window.clearTimeout(navigationTimer)
+    navigationTimer = undefined
+  }
 }
+
+function go(key: RouteKey) {
+  if (selectedKey.value === key) return
+  pendingKey.value = key
+  clearScheduledNavigation()
+  navigationFrame = window.requestAnimationFrame(() => {
+    navigationFrame = undefined
+    navigationTimer = window.setTimeout(() => {
+      navigationTimer = undefined
+      void router
+        .push({ name: key })
+        .catch(() => {})
+        .finally(() => {
+          pendingKey.value = null
+        })
+    }, 0)
+  })
+}
+
+onBeforeUnmount(() => {
+  clearScheduledNavigation()
+})
 </script>
 
 <template>
