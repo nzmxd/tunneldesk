@@ -5,6 +5,7 @@ mod error;
 mod health;
 mod hosts;
 mod model;
+mod single_instance;
 mod startup;
 mod state;
 mod tunnel;
@@ -15,9 +16,13 @@ use state::AppState;
 use tauri::menu::{Menu, MenuItem};
 #[cfg(not(all(target_os = "linux", target_arch = "x86")))]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, RunEvent};
+use tauri::{include_image, Manager, RunEvent};
 
 pub fn run() {
+    if single_instance::notify_existing_instance() {
+        return;
+    }
+
     init_logging();
 
     tauri::Builder::default()
@@ -27,6 +32,7 @@ pub fn run() {
         .manage(AppState::default())
         .setup(|app| {
             setup_tray(app)?;
+            single_instance::start_wake_listener(app.handle().clone());
             let startup_handle = app.handle().clone();
 
             let settings = config::load_settings().unwrap_or_default();
@@ -97,22 +103,16 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
     let app_handle = app.handle().clone();
-    let icon = app.default_window_icon().cloned();
+    let icon = include_image!("icons/tray-icon.png");
 
-    let mut builder = TrayIconBuilder::new().menu(&menu);
-    if let Some(icon) = icon {
-        builder = builder.icon(icon);
-    }
-
-    builder
+    TrayIconBuilder::new()
+        .menu(&menu)
+        .icon(icon)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "show" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                single_instance::show_main_window(app);
             }
-            "quit" => app.exit(0),
+            "quit" => exit_app(app),
             _ => {}
         })
         .on_tray_icon_event(move |_tray, event| {
@@ -122,10 +122,7 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
                 ..
             } = event
             {
-                if let Some(window) = app_handle.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                single_instance::show_main_window(&app_handle);
             }
         })
         .build(app)?;
@@ -153,4 +150,14 @@ fn init_logging() {
         .finish();
 
     let _ = tracing::subscriber::set_global_default(subscriber);
+}
+
+fn exit_app(app: &tauri::AppHandle) {
+    let settings = config::load_settings().unwrap_or_default();
+    if settings.behavior.cleanup_on_exit {
+        if let Err(error) = hosts::remove_block() {
+            tracing::warn!("Failed to clean hosts on exit: {error}");
+        }
+    }
+    app.exit(0);
 }

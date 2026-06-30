@@ -3,13 +3,26 @@ import { onBeforeUnmount, onMounted } from 'vue'
 import ThemeSelector from './ThemeSelector.vue'
 import { useAppStore } from '@/stores/appStore'
 import { useUpdateStore } from '@/stores/updateStore'
+import type { CloseAction } from '@/shared/types'
 
 const store = useAppStore()
 const updateStore = useUpdateStore()
 let launchStateTimer: ReturnType<typeof window.setTimeout> | undefined
 
+const closeActionOptions: { label: string; value: CloseAction }[] = [
+  { label: '每次询问', value: 'ask' },
+  { label: '最小化到托盘', value: 'minimizeToTray' },
+  { label: '退出应用', value: 'exit' },
+]
+
 function saveBehavior() {
   void store.saveSettingsOnly('应用设置已保存')
+}
+
+function changeCloseAction(value: CloseAction) {
+  if (store.settings.behavior.closeAction === value) return
+  store.settings.behavior.closeAction = value
+  saveBehavior()
 }
 
 function cancelLaunchStateRefresh() {
@@ -81,6 +94,32 @@ onBeforeUnmount(cancelLaunchStateRefresh)
               <span class="settings-switch-thumb" />
             </span>
           </label>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-panel">
+      <div class="settings-panel-head">
+        <div class="card-title">
+          <span class="card-title-main">关闭行为</span>
+        </div>
+      </div>
+      <div class="settings-panel-body">
+        <div class="settings-row settings-row-borderless">
+          <span class="settings-row-title">点击关闭按钮时</span>
+          <div class="settings-segmented settings-segmented-close" role="radiogroup" aria-label="关闭行为">
+            <button
+              v-for="option in closeActionOptions"
+              :key="option.value"
+              type="button"
+              class="settings-segmented-option"
+              :class="store.settings.behavior.closeAction === option.value ? 'settings-segmented-option-active' : ''"
+              :aria-pressed="store.settings.behavior.closeAction === option.value"
+              @click="changeCloseAction(option.value)"
+            >
+              <span>{{ option.label }}</span>
+            </button>
+          </div>
         </div>
       </div>
     </section>

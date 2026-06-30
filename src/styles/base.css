@@ -389,6 +389,10 @@ textarea {
   padding: 3px;
 }
 
+.settings-segmented-close {
+  grid-template-columns: repeat(3, minmax(98px, 1fr));
+}
+
 .settings-segmented-option {
   display: inline-flex;
   min-height: 32px;

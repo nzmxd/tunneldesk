@@ -39,6 +39,7 @@ export function defaultSettings(): AppSettings {
       autoRepairOnStart: false,
       cleanupOnExit: true,
       themeMode: 'system',
+      closeAction: 'ask',
     },
   }
 }

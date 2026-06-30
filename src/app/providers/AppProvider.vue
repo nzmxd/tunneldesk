@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { setTheme } from '@tauri-apps/api/app'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import CloseRequestDialog from './CloseRequestDialog.vue'
 import ToastBridge from './ToastBridge.vue'
 import { useAppStore } from '@/stores/appStore'
 import { useUpdateStore } from '@/stores/updateStore'
@@ -50,6 +51,7 @@ onBeforeUnmount(() => {
   <a-config-provider :locale="zhCN" :theme="themeConfig" component-size="middle">
     <a-app class="h-full">
       <slot />
+      <CloseRequestDialog />
       <ToastBridge />
     </a-app>
   </a-config-provider>

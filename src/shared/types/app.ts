@@ -1,5 +1,7 @@
 import type { ThemeMode, TunnelConfig } from './tunnel'
 
+export type CloseAction = 'ask' | 'minimizeToTray' | 'exit'
+
 export interface BehaviorSettings {
   startMinimized: boolean
   autoStartProfile: boolean
@@ -7,6 +9,7 @@ export interface BehaviorSettings {
   autoRepairOnStart: boolean
   cleanupOnExit: boolean
   themeMode: ThemeMode
+  closeAction: CloseAction
 }
 
 export interface AppSettings {
