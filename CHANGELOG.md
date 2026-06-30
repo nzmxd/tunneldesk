@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.6 - 2026-06-30
+
+- Unified the desktop, application, and tray icon set around the new TunnelDesk visual direction.
+- Added single-instance behavior so reopening TunnelDesk focuses the existing window instead of launching another copy.
+- Added close behavior preferences, including minimize-to-tray, exit, a close confirmation dialog, and a remember-choice option.
+
 ## v0.1.5 - 2026-06-30
 
 - Reduced menu switching jank by deferring route navigation work and trimming the settings page component tree.
