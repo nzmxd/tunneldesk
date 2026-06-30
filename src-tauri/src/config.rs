@@ -158,6 +158,9 @@ fn migrate_settings_value(value: &mut serde_json::Value) {
         behavior
             .entry(String::from("themeMode"))
             .or_insert_with(|| serde_json::Value::String(String::from("system")));
+        behavior
+            .entry(String::from("closeAction"))
+            .or_insert_with(|| serde_json::Value::String(String::from("ask")));
     }
 }
 
@@ -287,6 +290,10 @@ mod tests {
         assert_eq!(
             settings.behavior.theme_mode,
             crate::model::ThemeMode::System
+        );
+        assert_eq!(
+            settings.behavior.close_action,
+            crate::model::CloseAction::Ask
         );
         assert!(!settings.behavior.auto_start_profile);
         assert!(!settings.behavior.launch_at_login);

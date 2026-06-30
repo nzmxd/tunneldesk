@@ -14,6 +14,10 @@ fn default_theme_mode() -> ThemeMode {
     ThemeMode::System
 }
 
+fn default_close_action() -> CloseAction {
+    CloseAction::Ask
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum AuthMethod {
@@ -28,6 +32,14 @@ pub enum ThemeMode {
     System,
     Light,
     Dark,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CloseAction {
+    Ask,
+    MinimizeToTray,
+    Exit,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +84,8 @@ pub struct BehaviorSettings {
     pub cleanup_on_exit: bool,
     #[serde(default = "default_theme_mode")]
     pub theme_mode: ThemeMode,
+    #[serde(default = "default_close_action")]
+    pub close_action: CloseAction,
 }
 
 impl Default for BehaviorSettings {
@@ -83,6 +97,7 @@ impl Default for BehaviorSettings {
             auto_repair_on_start: false,
             cleanup_on_exit: true,
             theme_mode: ThemeMode::System,
+            close_action: CloseAction::Ask,
         }
     }
 }
