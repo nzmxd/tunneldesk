@@ -54,11 +54,17 @@ export function normalizeProfiles(value?: Partial<ProfilesFile> | null, fallback
 }
 
 export function normalizeStatus(value?: Partial<AppStatus> | null): AppStatus {
+  const fallback = defaultStatus()
+
   return {
-    ...defaultStatus(),
+    ...fallback,
     ...value,
     runningTunnelIds: value?.runningTunnelIds || [],
     tunnels: value?.tunnels || [],
+    privilege: {
+      ...fallback.privilege,
+      ...value?.privilege,
+    },
     services: value?.services || [],
   }
 }

@@ -28,7 +28,7 @@ TunnelDesk stores all mutable user data in the per-user data directory so the re
 - `settings.json` contains the SSH host, port, username, selected profile, and non-secret behavior flags.
 - `profiles.json` contains user-managed service mappings.
 - secrets are stored through the platform keyring under backend-derived tunnel keys.
-- hosts backups are created in the app `backups` directory before every hosts write.
+- hosts backups are created in the app `backups` directory for direct writes, and under `/var/lib/tunneldesk/backups` when the Linux polkit helper performs the write.
 
 ## Credential Boundary
 
@@ -42,7 +42,7 @@ TunnelDesk follows the same high-level split used by desktop SSH managers such a
 
 ## Privilege Boundary
 
-Editing the hosts file requires elevated privileges: `C:\Windows\System32\drivers\etc\hosts` on Windows and `/etc/hosts` on Linux/macOS. The app should be launched with the required privilege for start/repair operations. Normal configuration editing can run without elevation.
+Editing the hosts file requires elevated privileges: `C:\Windows\System32\drivers\etc\hosts` on Windows and `/etc/hosts` on Linux/macOS. On Linux `.deb` installs, the GUI stays in the normal user session and invokes `/usr/lib/tunneldesk/tunneldesk-hosts-helper` through polkit when hosts changes are needed. The helper accepts only structured TunnelDesk service mappings and only rewrites the TunnelDesk marker block.
 
 ## Validation
 

@@ -22,6 +22,16 @@ const runningText = computed(() => runningLabel(store.status.running))
 const activeSummary = computed(() => {
   return `${store.activeServices.length} 个启用服务 / ${store.profileTunnelIds.length} 条隧道`
 })
+const privilegeTagColor = computed(() => (store.status.privilege.canModifyHosts ? 'success' : 'warning'))
+const privilegeText = computed(() => {
+  if (store.status.privilege.hostsAccess === 'polkit-helper') {
+    return '授权可写 hosts'
+  }
+  if (store.status.privilege.hostsAccess === 'direct') {
+    return store.status.privilege.process === 'root' ? '管理员权限' : 'hosts 可写'
+  }
+  return 'hosts 不可写'
+})
 </script>
 
 <template>
@@ -42,12 +52,12 @@ const activeSummary = computed(() => {
           </template>
           {{ runningText }}
         </a-tag>
-        <a-tag class="status-chip optional-status-chip" :color="store.status.isAdmin ? 'success' : 'warning'">
+        <a-tag class="status-chip optional-status-chip" :color="privilegeTagColor">
           <template #icon>
-            <CheckCircleOutlined v-if="store.status.isAdmin" />
+            <CheckCircleOutlined v-if="store.status.privilege.canModifyHosts" />
             <CloseCircleOutlined v-else />
           </template>
-          {{ store.status.isAdmin ? '管理员权限' : '非管理员' }}
+          {{ privilegeText }}
         </a-tag>
         <span class="min-w-0 truncate text-sm text-[var(--text-muted)]">{{ activeSummary }}</span>
       </div>

@@ -50,7 +50,18 @@ Hosts file changes require elevated privileges:
 - Linux: `/etc/hosts`
 - macOS: `/etc/hosts`
 
-Normal configuration editing does not require elevation, but starting, stopping, or repairing hosts entries may require running the app with the appropriate privilege.
+Normal configuration editing does not require elevation. On Ubuntu/Linux, the recommended `.deb` package keeps the GUI running as the normal user and uses polkit to authorize a small helper only when TunnelDesk needs to update `/etc/hosts`.
+
+### Ubuntu Usage
+
+Use the `.deb` package when possible. It installs:
+
+- `/usr/lib/tunneldesk/tunneldesk-hosts-helper`
+- `/usr/share/polkit-1/actions/com.tunneldesk.hosts.policy`
+
+After installation, open TunnelDesk from the app launcher. When you click Start or Repair hosts, the system authorization dialog appears and only the helper updates the `# BEGIN TUNNELDESK` hosts block. Avoid running the GUI with `sudo TunnelDesk` for regular use because that stores configuration and credentials under `/root/.local/share/TunnelDesk`.
+
+The AppImage remains useful as a portable build, but it does not install the system polkit helper. Prefer the `.deb` package when hosts modification is required.
 
 ## How It Works
 
@@ -79,7 +90,7 @@ Files created there include:
 - `settings.json`: selected profile, selected tunnel, tunnel metadata, SSH endpoint metadata, theme mode, and non-secret behavior settings.
 - `profiles.json`: service profiles, loopback mappings, selected tunnel ids, and enabled states.
 - `logs\`: rolling application logs.
-- `backups\`: hosts file backups created before hosts writes.
+- `backups\`: hosts backups created when the app can write hosts directly. On Linux, the polkit helper stores hosts backups under `/var/lib/tunneldesk/backups`.
 
 Example service profiles live in [examples/service-profiles.example.json](examples/service-profiles.example.json). Real team profiles should be distributed out-of-band or imported through the UI, not committed with production hostnames.
 
@@ -158,6 +169,12 @@ Build a local Tauri package:
 
 ```powershell
 pnpm tauri:build
+```
+
+Build Ubuntu/Linux `.deb` and AppImage packages:
+
+```bash
+pnpm tauri:build:linux
 ```
 
 ## CI and Packaging

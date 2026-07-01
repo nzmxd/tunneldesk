@@ -1,12 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "TunnelDesk",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "identifier": "com.tunneldesk.app",
+  "mainBinaryName": "tunneldesk",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm build && node scripts/build-linux-helper.mjs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -38,7 +39,15 @@
       "icons/icon.icns",
       "icons/icon.ico",
       "icons/icon.png"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/lib/tunneldesk/tunneldesk-hosts-helper": "target/release/tunneldesk-hosts-helper",
+          "/usr/share/polkit-1/actions/com.tunneldesk.hosts.policy": "linux/com.tunneldesk.hosts.policy"
+        }
+      }
+    }
   },
   "plugins": {
     "updater": {
