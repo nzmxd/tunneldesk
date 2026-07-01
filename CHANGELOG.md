@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.9 - 2026-07-01
+
+- Fixed macOS release packaging so the updater metadata can include signed app archive artifacts alongside dmg installers.
+
 ## v0.1.8 - 2026-07-01
 
 - Fixed Linux in-app updates for Debian package installs by publishing deb-specific updater metadata and signatures.
