@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.7 - 2026-07-01
+
+- Added Linux polkit-based hosts authorization so the GUI can run as a normal user on Ubuntu.
+- Added a minimal `tunneldesk-hosts-helper` binary and Debian policy packaging for controlled `/etc/hosts` updates.
+- Expanded diagnostics to show process privilege, hosts write capability, and Linux helper availability.
+
 ## v0.1.6 - 2026-06-30
 
 - Unified the desktop, application, and tray icon set around the new TunnelDesk visual direction.

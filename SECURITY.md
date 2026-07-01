@@ -1,6 +1,6 @@
 # Security Policy
 
-TunnelDesk handles SSH credentials and modifies the Windows hosts file.
+TunnelDesk handles SSH credentials and modifies the platform hosts file.
 
 ## Secret Handling
 

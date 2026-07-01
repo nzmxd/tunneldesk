@@ -6,11 +6,14 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
+use crate::hosts_core::{
+    block_present_in_content, remove_block_if_present_content, render_block, replace_block,
+    validate_entries, HostsEntry,
+};
 use crate::model::ServiceConfig;
-
-const BEGIN_MARKER: &str = "# BEGIN TUNNELDESK";
-const END_MARKER: &str = "# END TUNNELDESK";
+#[cfg(target_os = "linux")]
+use crate::privileged_hosts;
 
 pub fn hosts_path() -> PathBuf {
     if cfg!(target_os = "windows") {
@@ -34,8 +37,35 @@ pub fn block_present() -> bool {
 }
 
 pub fn write_services_block(services: &[ServiceConfig]) -> AppResult<()> {
+    let entries = services_to_hosts_entries(services);
+    validate_entries(&entries).map_err(AppError::Message)?;
+
+    #[cfg(target_os = "linux")]
+    if should_use_privileged_helper() {
+        privileged_hosts::write_entries(&entries)?;
+        return Ok(());
+    }
+
+    write_entries_block_direct(&entries)
+}
+
+pub fn remove_block() -> AppResult<()> {
+    #[cfg(target_os = "linux")]
+    if should_use_privileged_helper() {
+        privileged_hosts::remove_block()?;
+        return Ok(());
+    }
+
+    remove_block_direct().map(|_| ())
+}
+
+pub fn remove_block_without_elevation() -> AppResult<bool> {
+    remove_block_direct()
+}
+
+fn write_entries_block_direct(entries: &[HostsEntry]) -> AppResult<()> {
     let content = fs::read_to_string(hosts_path()).unwrap_or_default();
-    let block = render_block(services);
+    let block = render_block(entries);
     let next = replace_block(&content, Some(&block));
     if next == content {
         return Ok(());
@@ -47,19 +77,7 @@ pub fn write_services_block(services: &[ServiceConfig]) -> AppResult<()> {
     Ok(())
 }
 
-pub fn remove_block() -> AppResult<()> {
-    let content = fs::read_to_string(hosts_path()).unwrap_or_default();
-    let Some(next) = remove_block_if_present_content(&content) else {
-        return Ok(());
-    };
-
-    backup_hosts_content(&content)?;
-    fs::write(hosts_path(), next)?;
-    flush_dns();
-    Ok(())
-}
-
-pub fn remove_block_if_present() -> AppResult<bool> {
+fn remove_block_direct() -> AppResult<bool> {
     let content = fs::read_to_string(hosts_path()).unwrap_or_default();
     let Some(next) = remove_block_if_present_content(&content) else {
         return Ok(false);
@@ -89,100 +107,18 @@ fn flush_dns() {
     let _ = Command::new("resolvectl").arg("flush-caches").output();
 }
 
-pub fn render_block(services: &[ServiceConfig]) -> String {
-    let mut lines = Vec::new();
-    lines.push(String::from(BEGIN_MARKER));
-    for service in services.iter().filter(|service| service.enabled) {
-        lines.push(format!("{} {}", service.local_ip, service.domain));
-    }
-    lines.push(String::from(END_MARKER));
-    lines.join("\n")
+fn services_to_hosts_entries(services: &[ServiceConfig]) -> Vec<HostsEntry> {
+    services
+        .iter()
+        .filter(|service| service.enabled)
+        .map(|service| HostsEntry {
+            domain: service.domain.clone(),
+            local_ip: service.local_ip.clone(),
+        })
+        .collect()
 }
 
-pub fn block_present_in_content(content: &str) -> bool {
-    let mut begin = None;
-    let mut end = None;
-
-    for (index, line) in content.lines().enumerate() {
-        match line.trim() {
-            BEGIN_MARKER if begin.is_none() => begin = Some(index),
-            END_MARKER if end.is_none() => end = Some(index),
-            _ => {}
-        }
-    }
-
-    matches!((begin, end), (Some(begin), Some(end)) if begin <= end)
-}
-
-pub fn remove_block_if_present_content(content: &str) -> Option<String> {
-    if block_present_in_content(content) {
-        Some(replace_block(content, None))
-    } else {
-        None
-    }
-}
-
-pub fn replace_block(content: &str, block: Option<&str>) -> String {
-    let mut lines = content.lines().collect::<Vec<_>>();
-    let begin = lines.iter().position(|line| line.trim() == BEGIN_MARKER);
-    let end = lines.iter().position(|line| line.trim() == END_MARKER);
-
-    if let (Some(begin), Some(end)) = (begin, end) {
-        if begin <= end {
-            lines.drain(begin..=end);
-        }
-    }
-
-    let mut next = lines.join("\n").trim_end().to_string();
-    if let Some(block) = block {
-        if !next.is_empty() {
-            next.push_str("\n\n");
-        }
-        next.push_str(block);
-    }
-    next.push('\n');
-    next
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn replace_block_is_idempotent() {
-        let first = replace_block(
-            "a\n",
-            Some("# BEGIN TUNNELDESK\n127.0.0.1 a\n# END TUNNELDESK"),
-        );
-        let second = replace_block(
-            &first,
-            Some("# BEGIN TUNNELDESK\n127.0.0.1 a\n# END TUNNELDESK"),
-        );
-        assert_eq!(first, second);
-    }
-
-    #[test]
-    fn remove_block_keeps_other_lines() {
-        let content = "before\n# BEGIN TUNNELDESK\n127.0.0.1 a\n# END TUNNELDESK\nafter\n";
-        let next = replace_block(content, None);
-        assert!(next.contains("before"));
-        assert!(next.contains("after"));
-        assert!(!next.contains("127.0.0.1 a"));
-    }
-
-    #[test]
-    fn remove_block_if_present_skips_clean_content() {
-        let content = "before\nafter\n";
-
-        assert!(remove_block_if_present_content(content).is_none());
-    }
-
-    #[test]
-    fn remove_block_if_present_removes_existing_block() {
-        let content = "before\n# BEGIN TUNNELDESK\n127.0.0.1 a\n# END TUNNELDESK\nafter\n";
-        let next = remove_block_if_present_content(content).unwrap();
-
-        assert_eq!(next, "before\nafter\n");
-        assert!(!block_present_in_content(&next));
-    }
+#[cfg(target_os = "linux")]
+fn should_use_privileged_helper() -> bool {
+    !can_write_hosts() && privileged_hosts::helper_installed()
 }

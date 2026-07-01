@@ -1,9 +1,29 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { ReloadOutlined } from '@ant-design/icons-vue'
 import { runningLabel } from '@/shared/domain/serviceStatus'
 import { useAppStore } from '@/stores/appStore'
 
 const store = useAppStore()
+const processLabel = computed(() => {
+  if (store.status.privilege.process === 'root') {
+    return '已提权'
+  }
+  if (store.status.privilege.process === 'user') {
+    return '普通用户'
+  }
+  return '未知'
+})
+const hostsAccessLabel = computed(() => {
+  if (store.status.privilege.hostsAccess === 'direct') {
+    return '可直接写入'
+  }
+  if (store.status.privilege.hostsAccess === 'polkit-helper') {
+    return '可系统授权'
+  }
+  return '不可用'
+})
+const hostsAccessColor = computed(() => (store.status.privilege.canModifyHosts ? 'success' : 'warning'))
 </script>
 
 <template>
@@ -14,17 +34,31 @@ const store = useAppStore()
       </div>
     </template>
     <a-alert
-      v-if="!store.status.isAdmin"
+      v-if="!store.status.privilege.canModifyHosts"
       class="mb-4"
       type="warning"
       show-icon
-      message="当前不是管理员权限"
+      message="当前无法修改 hosts"
+      :description="store.status.privilege.message"
     />
     <a-descriptions bordered size="small" :column="1">
-      <a-descriptions-item label="管理员权限">
-        <a-tag :color="store.status.isAdmin ? 'success' : 'warning'">
-          {{ store.status.isAdmin ? 'OK' : '需要管理员启动' }}
+      <a-descriptions-item label="当前进程">
+        <a-tag :color="store.status.privilege.process === 'root' ? 'success' : 'default'">
+          {{ processLabel }}
         </a-tag>
+      </a-descriptions-item>
+      <a-descriptions-item label="hosts 修改能力">
+        <a-tag :color="hostsAccessColor">
+          {{ hostsAccessLabel }}
+        </a-tag>
+      </a-descriptions-item>
+      <a-descriptions-item label="Linux 权限组件">
+        <a-tag :color="store.status.privilege.helperInstalled ? 'success' : 'default'">
+          {{ store.status.privilege.helperInstalled ? '已安装' : '未安装' }}
+        </a-tag>
+      </a-descriptions-item>
+      <a-descriptions-item label="权限说明">
+        {{ store.status.privilege.message }}
       </a-descriptions-item>
       <a-descriptions-item label="hosts 标记块">
         <a-tag :color="store.status.hostsBlockPresent ? 'processing' : 'success'">

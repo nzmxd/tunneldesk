@@ -296,12 +296,14 @@ pub fn get_status_for_state(state: &AppState) -> CommandResult<AppStatus> {
         })
         .collect::<Vec<_>>();
 
+    let privilege = health::privilege_status();
     let status = AppStatus {
         running,
         current_profile_id,
         running_tunnel_ids,
         tunnels: tunnel_statuses,
         is_admin: health::is_admin(),
+        privilege,
         hosts_block_present: hosts::block_present(),
         message: if running {
             String::from("Running")

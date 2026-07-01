@@ -217,6 +217,44 @@ pub struct TunnelStatus {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProcessPrivilege {
+    Root,
+    User,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum HostsAccess {
+    Direct,
+    PolkitHelper,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrivilegeStatus {
+    pub process: ProcessPrivilege,
+    pub hosts_access: HostsAccess,
+    pub helper_installed: bool,
+    pub can_modify_hosts: bool,
+    pub message: String,
+}
+
+impl Default for PrivilegeStatus {
+    fn default() -> Self {
+        Self {
+            process: ProcessPrivilege::Unknown,
+            hosts_access: HostsAccess::Unavailable,
+            helper_installed: false,
+            can_modify_hosts: false,
+            message: String::from("Hosts access is unavailable"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppStatus {
@@ -225,6 +263,7 @@ pub struct AppStatus {
     pub running_tunnel_ids: Vec<String>,
     pub tunnels: Vec<TunnelStatus>,
     pub is_admin: bool,
+    pub privilege: PrivilegeStatus,
     pub hosts_block_present: bool,
     pub message: String,
     pub services: Vec<ServiceStatus>,
@@ -238,6 +277,7 @@ impl Default for AppStatus {
             running_tunnel_ids: Vec::new(),
             tunnels: Vec::new(),
             is_admin: false,
+            privilege: PrivilegeStatus::default(),
             hosts_block_present: false,
             message: String::from("Stopped"),
             services: Vec::new(),

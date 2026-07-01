@@ -4,7 +4,10 @@ mod credential;
 mod error;
 mod health;
 mod hosts;
+pub mod hosts_core;
 mod model;
+#[cfg(target_os = "linux")]
+mod privileged_hosts;
 mod single_instance;
 mod startup;
 mod state;
@@ -44,7 +47,14 @@ pub fn run() {
             if settings.behavior.auto_repair_on_start {
                 std::thread::spawn(|| {
                     let started = std::time::Instant::now();
-                    match hosts::remove_block_if_present() {
+                    if !hosts::can_write_hosts() {
+                        tracing::info!(
+                            elapsed_ms = started.elapsed().as_millis(),
+                            "Startup hosts repair skipped; direct hosts access is unavailable"
+                        );
+                        return;
+                    }
+                    match hosts::remove_block_without_elevation() {
                         Ok(true) => tracing::info!(
                             elapsed_ms = started.elapsed().as_millis(),
                             "Startup hosts repair removed TunnelDesk block"
@@ -155,8 +165,12 @@ fn init_logging() {
 fn exit_app(app: &tauri::AppHandle) {
     let settings = config::load_settings().unwrap_or_default();
     if settings.behavior.cleanup_on_exit {
-        if let Err(error) = hosts::remove_block() {
-            tracing::warn!("Failed to clean hosts on exit: {error}");
+        if hosts::can_write_hosts() {
+            if let Err(error) = hosts::remove_block_without_elevation() {
+                tracing::warn!("Failed to clean hosts on exit: {error}");
+            }
+        } else {
+            tracing::info!("Skipped hosts cleanup on exit; direct hosts access is unavailable");
         }
     }
     app.exit(0);

@@ -58,6 +58,13 @@ export function defaultStatus(): AppStatus {
     runningTunnelIds: [],
     tunnels: [],
     isAdmin: false,
+    privilege: {
+      process: 'unknown',
+      hostsAccess: 'unavailable',
+      helperInstalled: false,
+      canModifyHosts: false,
+      message: 'Hosts access is unavailable',
+    },
     hostsBlockPresent: false,
     message: 'Stopped',
     services: [],
