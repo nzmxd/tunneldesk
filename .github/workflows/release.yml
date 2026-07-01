@@ -195,6 +195,8 @@ jobs:
                       case "$signed_lower" in
                         *.exe) asset="tunneldesk-${version}-${platform}-setup.exe.sig" ;;
                         *.msi) asset="tunneldesk-${version}-${platform}-setup.msi.sig" ;;
+                        *.deb) asset="tunneldesk-${version}-${platform}.deb.sig" ;;
+                        *.rpm) asset="tunneldesk-${version}-${platform}.rpm.sig" ;;
                         *.appimage) asset="tunneldesk-${version}-${platform}.AppImage.sig" ;;
                         *.tar.gz) asset="tunneldesk-${version}-${platform}.tar.gz.sig" ;;
                         *)
@@ -225,10 +227,16 @@ jobs:
           tag = os.environ["GITHUB_REF_NAME"]
           repo = os.environ["GITHUB_REPOSITORY"]
           expected = {
+              "windows-x64-nsis": ("windows-x86_64-nsis", f"tunneldesk-{tag}-windows-x64-setup.exe"),
               "windows-x64": ("windows-x86_64", f"tunneldesk-{tag}-windows-x64-setup.exe"),
+              "windows-arm64-nsis": ("windows-aarch64-nsis", f"tunneldesk-{tag}-windows-arm64-setup.exe"),
               "windows-arm64": ("windows-aarch64", f"tunneldesk-{tag}-windows-arm64-setup.exe"),
+              "linux-x64-deb": ("linux-x86_64-deb", f"tunneldesk-{tag}-linux-x64.deb"),
+              "linux-x64-appimage": ("linux-x86_64-appimage", f"tunneldesk-{tag}-linux-x64.AppImage"),
               "linux-x64": ("linux-x86_64", f"tunneldesk-{tag}-linux-x64.AppImage"),
+              "macos-x64-app": ("darwin-x86_64-app", f"tunneldesk-{tag}-macos-x64.tar.gz"),
               "macos-x64": ("darwin-x86_64", f"tunneldesk-{tag}-macos-x64.tar.gz"),
+              "macos-arm64-app": ("darwin-aarch64-app", f"tunneldesk-{tag}-macos-arm64.tar.gz"),
               "macos-arm64": ("darwin-aarch64", f"tunneldesk-{tag}-macos-arm64.tar.gz"),
           }
           platforms = {}

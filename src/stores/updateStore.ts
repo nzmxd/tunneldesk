@@ -9,6 +9,14 @@ interface CheckOptions {
   silent?: boolean
 }
 
+function updateErrorMessage(error: unknown): string {
+  const message = commandErrorMessage(error)
+  if (message.includes('invalid updater binary format')) {
+    return '更新包格式与当前安装方式不匹配，请下载对应的 deb/AppImage 安装包后重试'
+  }
+  return message
+}
+
 export const useUpdateStore = defineStore('updates', () => {
   const checking = ref(false)
   const installing = ref(false)
@@ -70,7 +78,7 @@ export const useUpdateStore = defineStore('updates', () => {
       return update
     } catch (error) {
       if (!options.silent) {
-        useAppStore().setMessage('error', commandErrorMessage(error))
+        useAppStore().setMessage('error', updateErrorMessage(error))
       }
       return null
     } finally {
@@ -90,7 +98,7 @@ export const useUpdateStore = defineStore('updates', () => {
       useAppStore().setMessage('success', '更新已安装，正在重启')
       await relaunch()
     } catch (error) {
-      useAppStore().setMessage('error', commandErrorMessage(error))
+      useAppStore().setMessage('error', updateErrorMessage(error))
     } finally {
       installing.value = false
     }

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.8 - 2026-07-01
+
+- Fixed Linux in-app updates for Debian package installs by publishing deb-specific updater metadata and signatures.
+- Kept AppImage updater metadata explicit while preserving the existing Linux fallback.
+- Improved the updater error message when the downloaded package format does not match the current install type.
+
 ## v0.1.7 - 2026-07-01
 
 - Added Linux polkit-based hosts authorization so the GUI can run as a normal user on Ubuntu.
