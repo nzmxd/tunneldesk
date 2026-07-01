@@ -72,4 +72,18 @@ describe('updateStore', () => {
     expect(processMock.relaunch).toHaveBeenCalled()
     expect(appStore.message).toBe('更新已安装，正在重启')
   })
+
+  it('explains updater binary format mismatches', async () => {
+    updaterMock.check.mockResolvedValue({
+      version: '0.2.0',
+      currentVersion: '0.1.1',
+      downloadAndInstall: vi.fn().mockRejectedValue('invalid updater binary format'),
+    })
+    const appStore = useAppStore()
+    const updateStore = useUpdateStore()
+
+    await updateStore.installAvailableUpdate()
+
+    expect(appStore.message).toBe('更新包格式与当前安装方式不匹配，请下载对应的 deb/AppImage 安装包后重试')
+  })
 })
