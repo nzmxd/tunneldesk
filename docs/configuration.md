@@ -60,6 +60,12 @@ The frontend only sends `tunnelId` plus a new password value to `save_tunnel_pas
 
 The platform keyring protects stored values with the current user account boundary. This is not a replacement for securing the OS account, disk, backups, and malware boundary.
 
+## Service Profile Sharing
+
+Profile import/export is scoped to service Profile data only. Exported files use the same `ProfilesFile` JSON shape as `profiles.json`; they do not include `settings.json`, SSH tunnel metadata, identity file paths, behavior settings, or password values.
+
+When importing, TunnelDesk previews the changes, groups missing `tunnelId` references so they can be mapped to existing local tunnels once, and creates a timestamped `backups/profiles-YYYYMMDD-HHMMSS.json` copy before applying the merge. Importing never starts a Profile automatically.
+
 ## Service Profiles
 
 Saved in `profiles.json` inside the data directory:

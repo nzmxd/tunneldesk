@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use chrono::Local;
+
 use crate::credential;
 use crate::error::AppResult;
 use crate::model::{
@@ -78,6 +80,40 @@ pub fn load_profiles() -> AppResult<ProfilesFile> {
 
 pub fn save_profiles(profiles: &ProfilesFile) -> AppResult<()> {
     write_json_atomic(profiles_path()?, profiles)
+}
+
+pub fn load_profiles_from_path(path: PathBuf) -> AppResult<ProfilesFile> {
+    let content = fs::read_to_string(path)?;
+    let mut value: serde_json::Value = serde_json::from_str(&content)?;
+    migrate_profiles_value(&mut value);
+    Ok(serde_json::from_value(value)?)
+}
+
+pub fn save_profiles_to_path(path: PathBuf, profiles: &ProfilesFile) -> AppResult<()> {
+    write_json_atomic(path, profiles)
+}
+
+pub fn backup_profiles_file() -> AppResult<PathBuf> {
+    backup_profiles_to_dir(profiles_path()?, backups_dir()?)
+}
+
+pub fn backup_profiles_to_dir(source: PathBuf, backup_dir: PathBuf) -> AppResult<PathBuf> {
+    fs::create_dir_all(&backup_dir)?;
+    if !source.exists() {
+        let value = ProfilesFile::default();
+        write_json_atomic(source.clone(), &value)?;
+    }
+
+    let timestamp = Local::now().format("%Y%m%d-%H%M%S");
+    let mut candidate = backup_dir.join(format!("profiles-{timestamp}.json"));
+    let mut suffix = 1;
+    while candidate.exists() {
+        candidate = backup_dir.join(format!("profiles-{timestamp}-{suffix}.json"));
+        suffix += 1;
+    }
+
+    fs::copy(source, &candidate)?;
+    Ok(candidate)
 }
 
 fn read_settings_or_default(path: PathBuf) -> AppResult<AppSettings> {
@@ -343,5 +379,20 @@ mod tests {
             profiles.profiles[0].services[0].tunnel_id,
             DEFAULT_TUNNEL_ID
         );
+    }
+
+    #[test]
+    fn backs_up_profiles_with_timestamped_name() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("profiles.json");
+        let backup_dir = temp.path().join("backups");
+        write_json_atomic(source.clone(), &ProfilesFile::default()).unwrap();
+
+        let backup = backup_profiles_to_dir(source, backup_dir).unwrap();
+        let file_name = backup.file_name().and_then(|name| name.to_str()).unwrap();
+
+        assert!(backup.exists());
+        assert!(file_name.starts_with("profiles-"));
+        assert!(file_name.ends_with(".json"));
     }
 }

@@ -35,14 +35,14 @@ TunnelDesk does not enable TUN mode and does not change Clash, Mihomo, system pr
 
 ## Platform Support
 
-| Platform | Development | CI Packages | Notes |
-| --- | --- | --- | --- |
-| Windows x64 | Supported | portable `.zip` + NSIS installer | Primary Windows target |
-| Windows ARM64 | Supported in CI | portable `.zip` + NSIS installer | ARM64 target |
-| Linux x64 | Supported | portable `.tar.gz` + `.deb` + AppImage | Primary Linux target |
-| Linux x86 | Experimental | binary + `.deb` | Built without the tray icon because Ubuntu 22.04 does not ship i386 AppIndicator dev packages |
-| macOS x64 | Supported in CI | portable `.tar.gz` + unsigned `.dmg` | Intel target |
-| macOS ARM64 | Supported in CI | portable `.tar.gz` + unsigned `.dmg` | Apple Silicon target |
+| Platform      | Development     | CI Packages                                     | Notes                                                                                         |
+| ------------- | --------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Windows x64   | Supported       | portable `.zip` + NSIS installer                | Primary Windows target                                                                        |
+| Windows ARM64 | Supported in CI | portable `.zip` + NSIS installer                | ARM64 target                                                                                  |
+| Linux x64     | Supported       | portable `.tar.gz` + `.deb` + `.rpm` + AppImage | Primary Linux target                                                                          |
+| Linux x86     | Experimental    | binary + `.deb`                                 | Built without the tray icon because Ubuntu 22.04 does not ship i386 AppIndicator dev packages |
+| macOS x64     | Supported in CI | portable `.tar.gz` + unsigned `.dmg`            | Intel target                                                                                  |
+| macOS ARM64   | Supported in CI | portable `.tar.gz` + unsigned `.dmg`            | Apple Silicon target                                                                          |
 
 Hosts file changes require elevated privileges:
 
@@ -50,7 +50,7 @@ Hosts file changes require elevated privileges:
 - Linux: `/etc/hosts`
 - macOS: `/etc/hosts`
 
-Normal configuration editing does not require elevation. On Ubuntu/Linux, the recommended `.deb` package keeps the GUI running as the normal user and uses polkit to authorize a small helper only when TunnelDesk needs to update `/etc/hosts`.
+Normal configuration editing does not require elevation. On Debian/Ubuntu, the recommended `.deb` package keeps the GUI running as the normal user and uses polkit to authorize a small helper only when TunnelDesk needs to update `/etc/hosts`.
 
 ### Ubuntu Usage
 
@@ -61,7 +61,16 @@ Use the `.deb` package when possible. It installs:
 
 After installation, open TunnelDesk from the app launcher. When you click Start or Repair hosts, the system authorization dialog appears and only the helper updates the `# BEGIN TUNNELDESK` hosts block. Avoid running the GUI with `sudo TunnelDesk` for regular use because that stores configuration and credentials under `/root/.local/share/TunnelDesk`.
 
-The AppImage remains useful as a portable build, but it does not install the system polkit helper. Prefer the `.deb` package when hosts modification is required.
+The AppImage remains useful as a portable build, but it does not install the system polkit helper. Prefer a native `.deb` or `.rpm` package when hosts modification is required.
+
+### RPM-based Linux Usage
+
+Use the `.rpm` package on RPM-based distributions such as Fedora, RHEL, and openSUSE. It installs the same helper and polkit policy:
+
+- `/usr/lib/tunneldesk/tunneldesk-hosts-helper`
+- `/usr/share/polkit-1/actions/com.tunneldesk.hosts.policy`
+
+After installation, run TunnelDesk as a normal user and authorize hosts changes through the system polkit prompt.
 
 ## How It Works
 
@@ -90,9 +99,11 @@ Files created there include:
 - `settings.json`: selected profile, selected tunnel, tunnel metadata, SSH endpoint metadata, theme mode, and non-secret behavior settings.
 - `profiles.json`: service profiles, loopback mappings, selected tunnel ids, and enabled states.
 - `logs\`: rolling application logs.
-- `backups\`: hosts backups created when the app can write hosts directly. On Linux, the polkit helper stores hosts backups under `/var/lib/tunneldesk/backups`.
+- `backups\`: hosts backups created when the app can write hosts directly, plus local `profiles.json` backups created before Profile imports. On Linux, the polkit helper stores hosts backups under `/var/lib/tunneldesk/backups`.
 
 Example service profiles live in [examples/service-profiles.example.json](examples/service-profiles.example.json). Real team profiles should be distributed out-of-band or imported through the UI, not committed with production hostnames.
+
+Service Profile import/export is intentionally limited to `profiles.json` data: Profile names, service mappings, loopback addresses, selected `tunnelId` values, and enabled states. It does not include SSH tunnel metadata, app behavior settings, identity file paths, or password values. After importing a team Profile, each workstation still needs matching local tunnel configurations for the referenced `tunnelId` values.
 
 ## Security Model
 
@@ -171,7 +182,7 @@ Build a local Tauri package:
 pnpm tauri:build
 ```
 
-Build Ubuntu/Linux `.deb` and AppImage packages:
+Build Linux `.deb`, `.rpm`, and AppImage packages:
 
 ```bash
 pnpm tauri:build:linux
@@ -192,7 +203,7 @@ The GitHub Actions workflow in [.github/workflows/ci.yml](.github/workflows/ci.y
 - Package job on `main` pushes and manual workflow runs:
   - Windows x64: `x86_64-pc-windows-msvc`, portable executable `.zip` and NSIS installer are separate artifacts.
   - Windows ARM64: `aarch64-pc-windows-msvc`, portable executable `.zip` and NSIS installer are separate artifacts.
-  - Linux x64: `x86_64-unknown-linux-gnu`, portable binary `.tar.gz`, `.deb`, and AppImage.
+  - Linux x64: `x86_64-unknown-linux-gnu`, portable binary `.tar.gz`, `.deb`, `.rpm`, and AppImage.
   - Linux x86: `i686-unknown-linux-gnu`, release binary + `.deb`, marked experimental and built without the tray icon.
   - macOS x64: `x86_64-apple-darwin`, portable binary `.tar.gz` and unsigned `.dmg`.
   - macOS ARM64: `aarch64-apple-darwin`, portable binary `.tar.gz` and unsigned `.dmg`.

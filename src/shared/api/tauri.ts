@@ -1,6 +1,14 @@
 import { invoke } from '@tauri-apps/api/core'
 import { defaultProfiles, defaultSettings, defaultStatus } from '@/shared/domain/defaults'
-import type { AppSettings, AppStatus, ProfilesFile, ServiceStatus } from '@/shared/types'
+import type {
+  AppSettings,
+  AppStatus,
+  ProfilesFile,
+  ProfilesImportApplyResult,
+  ProfilesImportPreview,
+  ServiceStatus,
+  TunnelMapping,
+} from '@/shared/types'
 
 type InvokeArgs = Record<string, unknown>
 
@@ -29,6 +37,17 @@ async function devInvoke<T>(cmd: string, args?: InvokeArgs): Promise<T> {
       return defaultProfiles() as T
     case 'save_profiles':
       return (args?.profiles || defaultProfiles()) as T
+    case 'export_profiles':
+      return undefined as T
+    case 'preview_profiles_import':
+      return emptyImportPreview() as T
+    case 'apply_profiles_import':
+      return {
+        settings: defaultSettings(),
+        profiles: defaultProfiles(),
+        preview: emptyImportPreview(),
+        backupPath: '',
+      } as T
     case 'get_status':
     case 'start_profile':
       return defaultStatus() as T
@@ -45,6 +64,22 @@ async function devInvoke<T>(cmd: string, args?: InvokeArgs): Promise<T> {
   }
 }
 
+function emptyImportPreview(): ProfilesImportPreview {
+  return {
+    profileCount: 0,
+    serviceCount: 0,
+    addedProfileCount: 0,
+    addedServiceCount: 0,
+    updatedServiceCount: 0,
+    skippedServiceCount: 0,
+    importedProfileIds: [],
+    missingTunnels: [],
+    overwrites: [],
+    conflicts: [],
+    canApply: true,
+  }
+}
+
 export const api = {
   loadSettings: () => invokeCommand<AppSettings>('load_settings'),
   launchAtLoginEnabled: () => invokeCommand<boolean>('launch_at_login_enabled'),
@@ -52,6 +87,12 @@ export const api = {
   setLaunchAtLogin: (enabled: boolean) => invokeCommand<boolean>('set_launch_at_login', { enabled }),
   loadProfiles: () => invokeCommand<ProfilesFile>('load_profiles'),
   saveProfiles: (profiles: ProfilesFile) => invokeCommand<ProfilesFile>('save_profiles', { profiles }),
+  exportProfiles: (path: string, profileIds: string[]) =>
+    invokeCommand<void>('export_profiles', { path, profileIds }),
+  previewProfilesImport: (path: string, tunnelMappings: TunnelMapping[]) =>
+    invokeCommand<ProfilesImportPreview>('preview_profiles_import', { path, tunnelMappings }),
+  applyProfilesImport: (path: string, tunnelMappings: TunnelMapping[]) =>
+    invokeCommand<ProfilesImportApplyResult>('apply_profiles_import', { path, tunnelMappings }),
   saveTunnelPassword: (tunnelId: string, value: string) =>
     invokeCommand<void>('save_tunnel_password', { tunnelId, value }),
   deleteTunnelPassword: (tunnelId: string) => invokeCommand<void>('delete_tunnel_password', { tunnelId }),

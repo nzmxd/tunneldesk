@@ -8,6 +8,7 @@ pub mod hosts_core;
 mod model;
 #[cfg(target_os = "linux")]
 mod privileged_hosts;
+mod profile_transfer;
 mod single_instance;
 mod startup;
 mod state;
@@ -87,6 +88,9 @@ pub fn run() {
             commands::set_launch_at_login,
             commands::load_profiles,
             commands::save_profiles,
+            commands::export_profiles,
+            commands::preview_profiles_import,
+            commands::apply_profiles_import,
             commands::save_tunnel_password,
             commands::delete_tunnel_password,
             commands::has_tunnel_password,

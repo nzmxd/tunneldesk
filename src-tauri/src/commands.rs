@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::process::Command;
 
 use tauri::State;
@@ -12,6 +13,7 @@ use crate::model::{
     AppSettings, AppStatus, AuthMethod, ProfilesFile, ServiceConfig, ServiceProfile, ServiceStatus,
     TunnelConfig, TunnelStatus,
 };
+use crate::profile_transfer::{ProfilesImportApplyResult, ProfilesImportPreview, TunnelMapping};
 use crate::startup;
 use crate::state::AppState;
 use crate::tunnel;
@@ -58,6 +60,30 @@ pub fn save_profiles(profiles: ProfilesFile) -> CommandResult<ProfilesFile> {
     validation::validate_tunnel_references(&settings, &profiles).map_err(to_command_error)?;
     config::save_profiles(&profiles).map_err(to_command_error)?;
     Ok(profiles)
+}
+
+#[tauri::command]
+pub fn export_profiles(path: String, profile_ids: Vec<String>) -> CommandResult<()> {
+    crate::profile_transfer::export_profiles(PathBuf::from(path), profile_ids)
+        .map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn preview_profiles_import(
+    path: String,
+    tunnel_mappings: Vec<TunnelMapping>,
+) -> CommandResult<ProfilesImportPreview> {
+    crate::profile_transfer::preview_profiles_import(PathBuf::from(path), tunnel_mappings)
+        .map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn apply_profiles_import(
+    path: String,
+    tunnel_mappings: Vec<TunnelMapping>,
+) -> CommandResult<ProfilesImportApplyResult> {
+    crate::profile_transfer::apply_profiles_import(PathBuf::from(path), tunnel_mappings)
+        .map_err(to_command_error)
 }
 
 #[tauri::command]
