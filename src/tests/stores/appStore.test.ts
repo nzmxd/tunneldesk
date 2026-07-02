@@ -170,16 +170,105 @@ describe('appStore', () => {
     expect(mockApi.saveSettings).toHaveBeenLastCalledWith(expect.objectContaining({ currentProfileId: 'team' }))
   })
 
+  it('creates a profile and switches to it', async () => {
+    const store = useAppStore()
+
+    const created = await store.createProfile('Team Profile')
+
+    expect(created).toBe(true)
+    expect(store.settings.currentProfileId).toBe('team-profile')
+    expect(store.currentProfile.name).toBe('Team Profile')
+    expect(mockApi.saveProfiles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profiles: expect.arrayContaining([expect.objectContaining({ id: 'team-profile', name: 'Team Profile' })]),
+      }),
+    )
+    expect(mockApi.saveSettings).toHaveBeenLastCalledWith(expect.objectContaining({ currentProfileId: 'team-profile' }))
+  })
+
+  it('renames a profile', async () => {
+    const store = useAppStore()
+
+    const renamed = await store.renameProfile('default', 'Renamed Profile')
+
+    expect(renamed).toBe(true)
+    expect(store.currentProfile.name).toBe('Renamed Profile')
+    expect(mockApi.saveProfiles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profiles: expect.arrayContaining([expect.objectContaining({ id: 'default', name: 'Renamed Profile' })]),
+      }),
+    )
+    expect(mockApi.saveSettings).not.toHaveBeenCalled()
+  })
+
+  it('prevents duplicate profile names when renaming', async () => {
+    const store = useAppStore()
+    mockApi.loadProfiles.mockResolvedValue({
+      schemaVersion: 2,
+      profiles: [
+        { id: 'default', name: 'Default Profile', enabled: true, services: [] },
+        { id: 'team', name: 'Team Profile', enabled: true, services: [] },
+      ],
+    })
+
+    await store.refresh()
+    mockApi.saveProfiles.mockClear()
+    const renamed = await store.renameProfile('team', 'Default Profile')
+
+    expect(renamed).toBe(false)
+    expect(mockApi.saveProfiles).not.toHaveBeenCalled()
+    expect(store.message).toContain('Profile 已存在')
+  })
+
+  it('deletes the current profile and switches to a remaining one', async () => {
+    const store = useAppStore()
+    mockApi.loadSettings.mockResolvedValue({ ...defaultSettings(), currentProfileId: 'team' })
+    mockApi.loadProfiles.mockResolvedValue({
+      schemaVersion: 2,
+      profiles: [
+        { id: 'default', name: 'Default Profile', enabled: true, services: [] },
+        { id: 'team', name: 'Team Profile', enabled: true, services: [] },
+      ],
+    })
+
+    await store.refresh()
+    const deleted = await store.deleteProfile('team')
+
+    expect(deleted).toBe(true)
+    expect(store.settings.currentProfileId).toBe('default')
+    expect(store.profiles.profiles).toHaveLength(1)
+    expect(mockApi.saveProfiles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profiles: [expect.objectContaining({ id: 'default' })],
+      }),
+    )
+    expect(mockApi.saveSettings).toHaveBeenLastCalledWith(expect.objectContaining({ currentProfileId: 'default' }))
+  })
+
+  it('keeps at least one profile when deleting', async () => {
+    const store = useAppStore()
+
+    await store.refresh()
+    const deleted = await store.deleteProfile('default')
+
+    expect(deleted).toBe(false)
+    expect(mockApi.saveProfiles).not.toHaveBeenCalled()
+    expect(store.message).toContain('至少保留一个 Profile')
+  })
+
   it('blocks profile switching and imports while running', async () => {
     const store = useAppStore()
     mockApi.getStatus.mockResolvedValue({ ...defaultStatus(), running: true, runningTunnelIds: ['default'] })
 
     await store.refresh()
     await store.selectProfile('team')
+    const renamed = await store.renameProfile('default', 'Renamed Profile')
     const session = await store.previewProfilesImport()
 
+    expect(renamed).toBe(false)
     expect(session).toBeUndefined()
     expect(mockApi.saveSettings).not.toHaveBeenCalled()
+    expect(mockApi.saveProfiles).not.toHaveBeenCalled()
     expect(mockApi.previewProfilesImport).not.toHaveBeenCalled()
     expect(store.message).toContain('运行中不能导入')
   })

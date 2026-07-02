@@ -62,6 +62,8 @@ The platform keyring protects stored values with the current user account bounda
 
 ## Service Profile Sharing
 
+The Services page supports creating, renaming, deleting, switching, importing, and exporting Profiles. Profile switching, Profile mutations, and import are disabled while a Profile is running so the active hosts block and local listeners stay aligned with the selected configuration.
+
 Profile import/export is scoped to service Profile data only. Exported files use the same `ProfilesFile` JSON shape as `profiles.json`; they do not include `settings.json`, SSH tunnel metadata, identity file paths, behavior settings, or password values.
 
 When importing, TunnelDesk previews the changes, groups missing `tunnelId` references so they can be mapped to existing local tunnels once, and creates a timestamped `backups/profiles-YYYYMMDD-HHMMSS.json` copy before applying the merge. Importing never starts a Profile automatically.

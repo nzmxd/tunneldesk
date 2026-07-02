@@ -21,7 +21,7 @@ TunnelDesk does not enable TUN mode and does not change Clash, Mihomo, system pr
 ## Features
 
 - Multi-tunnel configuration: different services in the same profile can use different SSH jump hosts.
-- Profile-based service mappings: group development services by project, environment, or team workflow.
+- Profile-based service mappings: create, rename, delete, switch, import, and export service groups by project, environment, or team workflow.
 - Controlled hosts management: TunnelDesk writes only inside its own `# BEGIN TUNNELDESK` marker block.
 - Local loopback listeners: service domains resolve to addresses such as `127.77.0.10`, then TunnelDesk forwards traffic over SSH `direct-tcpip`.
 - Tunnel-scoped password storage: passwords are stored in the platform keyring and are never written to JSON settings files.
@@ -102,6 +102,8 @@ Files created there include:
 - `backups\`: hosts backups created when the app can write hosts directly, plus local `profiles.json` backups created before Profile imports. On Linux, the polkit helper stores hosts backups under `/var/lib/tunneldesk/backups`.
 
 Example service profiles live in [examples/service-profiles.example.json](examples/service-profiles.example.json). Real team profiles should be distributed out-of-band or imported through the UI, not committed with production hostnames.
+
+Profiles can be created, renamed, deleted, switched, imported, and exported from the Services page. Profile switching and profile mutations are disabled while a profile is running so the hosts block and active listeners cannot drift from the selected configuration.
 
 Service Profile import/export is intentionally limited to `profiles.json` data: Profile names, service mappings, loopback addresses, selected `tunnelId` values, and enabled states. It does not include SSH tunnel metadata, app behavior settings, identity file paths, or password values. After importing a team Profile, each workstation still needs matching local tunnel configurations for the referenced `tunnelId` values.
 
