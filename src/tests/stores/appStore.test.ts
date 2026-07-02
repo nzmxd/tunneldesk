@@ -6,9 +6,13 @@ import { useAppStore } from '@/stores/appStore'
 const mockApi = vi.hoisted(() => ({
   loadSettings: vi.fn(),
   saveSettings: vi.fn(),
+  launchAtLoginEnabled: vi.fn(),
   setLaunchAtLogin: vi.fn(),
   loadProfiles: vi.fn(),
   saveProfiles: vi.fn(),
+  exportProfiles: vi.fn(),
+  previewProfilesImport: vi.fn(),
+  applyProfilesImport: vi.fn(),
   saveTunnelPassword: vi.fn(),
   deleteTunnelPassword: vi.fn(),
   hasTunnelPassword: vi.fn(),
@@ -21,9 +25,16 @@ const mockApi = vi.hoisted(() => ({
   openLogDir: vi.fn(),
 }))
 
+const mockDialog = vi.hoisted(() => ({
+  open: vi.fn(),
+  save: vi.fn(),
+}))
+
 vi.mock('@/shared/api/tauri', () => ({
   api: mockApi,
 }))
+
+vi.mock('@tauri-apps/plugin-dialog', () => mockDialog)
 
 describe('appStore', () => {
   beforeEach(() => {
@@ -31,9 +42,18 @@ describe('appStore', () => {
     vi.clearAllMocks()
     mockApi.loadSettings.mockResolvedValue(defaultSettings())
     mockApi.saveSettings.mockImplementation(async (settings) => settings)
+    mockApi.launchAtLoginEnabled.mockResolvedValue(false)
     mockApi.setLaunchAtLogin.mockResolvedValue(true)
     mockApi.loadProfiles.mockResolvedValue(defaultProfiles())
     mockApi.saveProfiles.mockImplementation(async (profiles) => profiles)
+    mockApi.exportProfiles.mockResolvedValue(undefined)
+    mockApi.previewProfilesImport.mockResolvedValue(emptyImportPreview())
+    mockApi.applyProfilesImport.mockResolvedValue({
+      settings: defaultSettings(),
+      profiles: defaultProfiles(),
+      preview: emptyImportPreview(),
+      backupPath: '',
+    })
     mockApi.hasTunnelPassword.mockResolvedValue(false)
     mockApi.saveTunnelPassword.mockResolvedValue(undefined)
     mockApi.deleteTunnelPassword.mockResolvedValue(undefined)
@@ -43,6 +63,8 @@ describe('appStore', () => {
     mockApi.getStatus.mockResolvedValue(defaultStatus())
     mockApi.repairHosts.mockResolvedValue(undefined)
     mockApi.openLogDir.mockResolvedValue(undefined)
+    mockDialog.open.mockResolvedValue('profiles.json')
+    mockDialog.save.mockResolvedValue('profiles-export.json')
   })
 
   it('loads settings, profiles, status, and password state', async () => {
@@ -130,4 +152,97 @@ describe('appStore', () => {
     store.removeService('mysql')
     expect(store.currentProfile.services).toHaveLength(0)
   })
+
+  it('switches profiles by saving current profile selection', async () => {
+    const store = useAppStore()
+    mockApi.loadProfiles.mockResolvedValue({
+      schemaVersion: 2,
+      profiles: [
+        { id: 'default', name: 'Default Profile', enabled: true, services: [] },
+        { id: 'team', name: 'Team Profile', enabled: true, services: [] },
+      ],
+    })
+
+    await store.refresh()
+    await store.selectProfile('team')
+
+    expect(store.settings.currentProfileId).toBe('team')
+    expect(mockApi.saveSettings).toHaveBeenLastCalledWith(expect.objectContaining({ currentProfileId: 'team' }))
+  })
+
+  it('blocks profile switching and imports while running', async () => {
+    const store = useAppStore()
+    mockApi.getStatus.mockResolvedValue({ ...defaultStatus(), running: true, runningTunnelIds: ['default'] })
+
+    await store.refresh()
+    await store.selectProfile('team')
+    const session = await store.previewProfilesImport()
+
+    expect(session).toBeUndefined()
+    expect(mockApi.saveSettings).not.toHaveBeenCalled()
+    expect(mockApi.previewProfilesImport).not.toHaveBeenCalled()
+    expect(store.message).toContain('运行中不能导入')
+  })
+
+  it('previews and applies profile imports', async () => {
+    const store = useAppStore()
+    const importedProfiles = {
+      schemaVersion: 2,
+      profiles: [{ id: 'team', name: 'Team Profile', enabled: true, services: [] }],
+    }
+    const importedSettings = { ...defaultSettings(), currentProfileId: 'team' }
+    mockApi.previewProfilesImport.mockResolvedValue({
+      ...emptyImportPreview(),
+      profileCount: 1,
+      importedProfileIds: ['team'],
+      overwrites: [
+        {
+          profileId: 'default',
+          profileName: 'Default Profile',
+          serviceId: 'mysql',
+          oldName: 'MySQL',
+          oldDomain: 'mysql.old',
+          oldPort: 3306,
+          oldLocalIp: '127.77.0.10',
+          oldTunnelId: 'default',
+          newName: 'MySQL',
+          newDomain: 'mysql.new',
+          newPort: 3306,
+          newLocalIp: '127.77.0.10',
+          newTunnelId: 'default',
+        },
+      ],
+    })
+    mockApi.applyProfilesImport.mockResolvedValue({
+      settings: importedSettings,
+      profiles: importedProfiles,
+      preview: emptyImportPreview(),
+      backupPath: 'profiles-backup.json',
+    })
+
+    const session = await store.previewProfilesImport()
+    const result = await store.applyProfilesImport('profiles.json', [])
+
+    expect(session?.preview.profileCount).toBe(1)
+    expect(mockApi.previewProfilesImport).toHaveBeenCalledWith('profiles.json', [])
+    expect(result?.backupPath).toBe('profiles-backup.json')
+    expect(store.settings.currentProfileId).toBe('team')
+    expect(store.profiles.profiles[0].id).toBe('team')
+  })
 })
+
+function emptyImportPreview() {
+  return {
+    profileCount: 0,
+    serviceCount: 0,
+    addedProfileCount: 0,
+    addedServiceCount: 0,
+    updatedServiceCount: 0,
+    skippedServiceCount: 0,
+    importedProfileIds: [],
+    missingTunnels: [],
+    overwrites: [],
+    conflicts: [],
+    canApply: true,
+  }
+}

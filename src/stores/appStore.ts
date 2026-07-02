@@ -1,12 +1,13 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { open, save } from '@tauri-apps/plugin-dialog'
 import { api } from '@/shared/api/tauri'
 import { commandErrorMessage } from '@/shared/api/commandError'
 import { DEFAULT_PROFILE_ID, DEFAULT_TUNNEL_ID, defaultProfiles, defaultSettings, defaultStatus } from '@/shared/domain/defaults'
 import { normalizeProfiles, normalizeSettings, normalizeStatus } from '@/shared/domain/normalize'
 import { createTunnel, nextLocalIp, slugify, tunnelName as resolveTunnelName } from '@/shared/domain/tunnelFactory'
 import { findDuplicateListener } from '@/shared/domain/validators'
-import type { AppSettings, AppStatus, ProfilesFile, ServiceConfig, TunnelConfig } from '@/shared/types'
+import type { AppSettings, AppStatus, ProfilesFile, ProfilesImportApplyResult, ProfilesImportSession, ServiceConfig, TunnelConfig, TunnelMapping } from '@/shared/types'
 import { usePasswordStore } from './passwordStore'
 
 type MessageType = 'success' | 'error' | 'info'
@@ -165,6 +166,105 @@ export const useAppStore = defineStore('app', () => {
     }, '服务配置已保存')
   }
 
+  async function selectProfile(profileId: string) {
+    if (status.value.running) {
+      setMessage('error', '运行中不能切换 Profile，请先停止隧道')
+      return
+    }
+    if (settings.value.currentProfileId === profileId) return
+    const previousProfileId = settings.value.currentProfileId
+    loading.value = true
+    clearMessage()
+    try {
+      settings.value.currentProfileId = profileId
+      await persistSettings()
+      await refreshStatus()
+      setMessage('success', 'Profile 已切换')
+    } catch (error) {
+      settings.value.currentProfileId = previousProfileId
+      setMessage('error', commandErrorMessage(error))
+    } finally {
+      loading.value = false
+    }
+  }
+
+  function exportFileName(scope: 'current' | 'all') {
+    const baseName = scope === 'current' ? currentProfile.value.id || 'profile' : 'profiles'
+    return `tunneldesk-${baseName.replace(/[^a-zA-Z0-9_-]+/g, '-')}.json`
+  }
+
+  async function exportProfiles(profileIds: string[], scope: 'current' | 'all', okMessage: string) {
+    const path = await save({
+      title: '导出服务 Profile',
+      defaultPath: exportFileName(scope),
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    })
+    if (!path) return
+    await withBusy(() => api.exportProfiles(path, profileIds), okMessage)
+  }
+
+  async function exportCurrentProfile() {
+    await exportProfiles([currentProfile.value.id], 'current', '当前 Profile 已导出')
+  }
+
+  async function exportAllProfiles() {
+    await exportProfiles([], 'all', '全部 Profile 已导出')
+  }
+
+  async function previewProfilesImport(
+    path?: string,
+    tunnelMappings: TunnelMapping[] = [],
+    quiet = false,
+  ): Promise<ProfilesImportSession | undefined> {
+    if (status.value.running) {
+      setMessage('error', '运行中不能导入 Profile，请先停止隧道')
+      return undefined
+    }
+    const selectedPath =
+      path ||
+      (await open({
+        title: '导入服务 Profile',
+        multiple: false,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      }))
+    if (!selectedPath || Array.isArray(selectedPath)) return undefined
+
+    const action = async () => ({
+      path: selectedPath,
+      tunnelMappings,
+      preview: await api.previewProfilesImport(selectedPath, tunnelMappings),
+    })
+    if (quiet) {
+      loading.value = true
+      clearMessage()
+      try {
+        return await action()
+      } catch (error) {
+        setMessage('error', commandErrorMessage(error))
+        return undefined
+      } finally {
+        loading.value = false
+      }
+    }
+    return withBusy(action, '导入预览已生成')
+  }
+
+  async function applyProfilesImport(
+    path: string,
+    tunnelMappings: TunnelMapping[],
+  ): Promise<ProfilesImportApplyResult | undefined> {
+    if (status.value.running) {
+      setMessage('error', '运行中不能导入 Profile，请先停止隧道')
+      return undefined
+    }
+    return withBusy(async () => {
+      const result = await api.applyProfilesImport(path, tunnelMappings)
+      applyConfig(result.settings, result.profiles)
+      await refreshStatus()
+      return result
+    }, 'Profile 已导入')
+  }
+
   async function start() {
     await withBusy(async () => {
       status.value = normalizeStatus(await api.startProfile())
@@ -282,6 +382,11 @@ export const useAppStore = defineStore('app', () => {
     testTunnel,
     clearTunnelPassword,
     saveProfiles,
+    selectProfile,
+    exportCurrentProfile,
+    exportAllProfiles,
+    previewProfilesImport,
+    applyProfilesImport,
     start,
     stop,
     repairHosts,

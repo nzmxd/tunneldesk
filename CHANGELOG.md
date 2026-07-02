@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.10 - 2026-07-03
+
+- Added service Profile import/export with previewed merges, missing tunnel mapping, pre-import `profiles.json` backups, and Profile switching in the services UI.
+- Added Linux x64 RPM release packaging with the hosts helper and polkit policy included.
+
 ## v0.1.9 - 2026-07-01
 
 - Fixed macOS release packaging so the updater metadata can include signed app archive artifacts alongside dmg installers.
