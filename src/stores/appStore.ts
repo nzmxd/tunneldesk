@@ -7,7 +7,7 @@ import { DEFAULT_PROFILE_ID, DEFAULT_TUNNEL_ID, defaultProfiles, defaultSettings
 import { normalizeProfiles, normalizeSettings, normalizeStatus } from '@/shared/domain/normalize'
 import { createTunnel, nextLocalIp, slugify, tunnelName as resolveTunnelName } from '@/shared/domain/tunnelFactory'
 import { findDuplicateListener } from '@/shared/domain/validators'
-import type { AppSettings, AppStatus, ProfilesFile, ProfilesImportApplyResult, ProfilesImportSession, ServiceConfig, TunnelConfig, TunnelMapping } from '@/shared/types'
+import type { AppSettings, AppStatus, ProfilesFile, ProfilesImportApplyResult, ProfilesImportSession, ServiceConfig, ServiceProfile, TunnelConfig, TunnelMapping } from '@/shared/types'
 import { usePasswordStore } from './passwordStore'
 
 type MessageType = 'success' | 'error' | 'info'
@@ -164,6 +164,133 @@ export const useAppStore = defineStore('app', () => {
       profiles.value = normalizeProfiles(await api.saveProfiles(normalizeProfiles(profiles.value, currentTunnel.value.id)), currentTunnel.value.id)
       await refresh()
     }, '服务配置已保存')
+  }
+
+  function nextProfileId(name: string) {
+    const base = slugify(name) || 'profile'
+    const used = new Set(profiles.value.profiles.map((profile) => profile.id))
+    if (!used.has(base)) return base
+    for (let index = 2; index < 100; index += 1) {
+      const candidate = `${base}-${index}`
+      if (!used.has(candidate)) return candidate
+    }
+    return `${base}-${Date.now()}`
+  }
+
+  async function createProfile(name: string): Promise<boolean> {
+    if (status.value.running) {
+      setMessage('error', '运行中不能新建 Profile，请先停止隧道')
+      return false
+    }
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      setMessage('error', '请填写 Profile 名称')
+      return false
+    }
+    if (profiles.value.profiles.some((profile) => profile.name.trim().toLowerCase() === trimmedName.toLowerCase())) {
+      setMessage('error', `Profile 已存在：${trimmedName}`)
+      return false
+    }
+
+    const profile: ServiceProfile = {
+      id: nextProfileId(trimmedName),
+      name: trimmedName,
+      enabled: true,
+      services: [],
+    }
+    const created = await withBusy(async () => {
+      const nextProfiles = normalizeProfiles(
+        {
+          ...profiles.value,
+          profiles: [...profiles.value.profiles, profile],
+        },
+        currentTunnel.value.id,
+      )
+      profiles.value = normalizeProfiles(await api.saveProfiles(nextProfiles), currentTunnel.value.id)
+      settings.value.currentProfileId = profile.id
+      await persistSettings()
+      await refreshStatus()
+      return true
+    }, 'Profile 已创建')
+
+    return Boolean(created)
+  }
+
+  async function renameProfile(profileId: string, name: string): Promise<boolean> {
+    if (status.value.running) {
+      setMessage('error', '运行中不能重命名 Profile，请先停止隧道')
+      return false
+    }
+    const targetProfile = profiles.value.profiles.find((profile) => profile.id === profileId)
+    if (!targetProfile) {
+      setMessage('error', `Profile 不存在：${profileId}`)
+      return false
+    }
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      setMessage('error', '请填写 Profile 名称')
+      return false
+    }
+    if (profiles.value.profiles.some((profile) => profile.id !== profileId && profile.name.trim().toLowerCase() === trimmedName.toLowerCase())) {
+      setMessage('error', `Profile 已存在：${trimmedName}`)
+      return false
+    }
+    if (targetProfile.name === trimmedName) {
+      setMessage('info', 'Profile 名称未变化')
+      return true
+    }
+
+    const renamed = await withBusy(async () => {
+      const nextProfiles = normalizeProfiles(
+        {
+          ...profiles.value,
+          profiles: profiles.value.profiles.map((profile) => (profile.id === profileId ? { ...profile, name: trimmedName } : profile)),
+        },
+        currentTunnel.value.id,
+      )
+      profiles.value = normalizeProfiles(await api.saveProfiles(nextProfiles), currentTunnel.value.id)
+      await refreshStatus()
+      return true
+    }, 'Profile 已重命名')
+
+    return Boolean(renamed)
+  }
+
+  async function deleteProfile(profileId: string): Promise<boolean> {
+    if (status.value.running) {
+      setMessage('error', '运行中不能删除 Profile，请先停止隧道')
+      return false
+    }
+    if (profiles.value.profiles.length <= 1) {
+      setMessage('error', '至少保留一个 Profile')
+      return false
+    }
+    const targetProfile = profiles.value.profiles.find((profile) => profile.id === profileId)
+    if (!targetProfile) {
+      setMessage('error', `Profile 不存在：${profileId}`)
+      return false
+    }
+
+    const remainingProfiles = profiles.value.profiles.filter((profile) => profile.id !== profileId)
+    const nextProfileId = settings.value.currentProfileId === profileId
+      ? remainingProfiles[0]?.id || DEFAULT_PROFILE_ID
+      : settings.value.currentProfileId
+    const deleted = await withBusy(async () => {
+      const nextProfiles = normalizeProfiles(
+        {
+          ...profiles.value,
+          profiles: remainingProfiles,
+        },
+        currentTunnel.value.id,
+      )
+      profiles.value = normalizeProfiles(await api.saveProfiles(nextProfiles), currentTunnel.value.id)
+      settings.value.currentProfileId = nextProfileId
+      await persistSettings()
+      await refreshStatus()
+      return true
+    }, 'Profile 已删除')
+
+    return Boolean(deleted)
   }
 
   async function selectProfile(profileId: string) {
@@ -382,6 +509,9 @@ export const useAppStore = defineStore('app', () => {
     testTunnel,
     clearTunnelPassword,
     saveProfiles,
+    createProfile,
+    renameProfile,
+    deleteProfile,
     selectProfile,
     exportCurrentProfile,
     exportAllProfiles,

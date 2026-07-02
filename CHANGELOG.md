@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.11 - 2026-07-03
+
+- Added service Profile creation, rename, and deletion from the Services page, with running-state guards and duplicate-name validation.
+- Consolidated Profile actions into a compact selector overflow menu so import/export and CRUD controls no longer crowd the services toolbar.
+- Added frontend tests and documentation for the expanded Profile management workflow.
+
 ## v0.1.10 - 2026-07-03
 
 - Added service Profile import/export with previewed merges, missing tunnel mapping, pre-import `profiles.json` backups, and Profile switching in the services UI.
