@@ -441,7 +441,7 @@ pub fn read_logs(max_lines: Option<usize>) -> CommandResult<Vec<LogEntry>> {
         };
 
         for (line_index, raw_line) in content.lines().enumerate() {
-            let raw = raw_line.trim_end().to_string();
+            let raw = strip_ansi_codes(raw_line).trim_end().to_string();
             if raw.trim().is_empty() {
                 continue;
             }
@@ -476,6 +476,32 @@ pub fn open_log_dir() -> CommandResult<()> {
         .spawn()
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+fn strip_ansi_codes(value: &str) -> String {
+    let mut cleaned = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+
+    while let Some(character) = chars.next() {
+        if character == '\u{1b}' {
+            if chars.next_if_eq(&'[').is_some() {
+                for sequence_character in chars.by_ref() {
+                    if ('@'..='~').contains(&sequence_character) {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+
+        if character.is_control() && character != '\t' {
+            continue;
+        }
+
+        cleaned.push(character);
+    }
+
+    cleaned
 }
 
 fn parse_log_entry(id: String, raw: String) -> LogEntry {
@@ -613,5 +639,17 @@ mod tests {
         assert_eq!(statuses.len(), 2);
         assert_eq!(statuses[0].service_id, "mysql");
         assert_eq!(statuses[1].service_id, "redis");
+    }
+
+    #[test]
+    fn parse_log_entry_handles_ansi_colored_tracing_lines() {
+        let raw = "\u{1b}[2m2026-07-03T07:04:34.410788Z\u{1b}[0m \u{1b}[32m INFO\u{1b}[0m \u{1b}[2mtunneldesk_lib::commands\u{1b}[0m\u{1b}[2m:\u{1b}[0m Status refresh completed \u{1b}[3mservice_count\u{1b}[0m\u{1b}[2m=\u{1b}[0m10";
+        let entry = parse_log_entry(String::from("test:1"), strip_ansi_codes(raw));
+
+        assert_eq!(entry.timestamp, "2026-07-03T07:04:34.410788Z");
+        assert_eq!(entry.level, "INFO");
+        assert_eq!(entry.target, "tunneldesk_lib::commands");
+        assert_eq!(entry.message, "Status refresh completed service_count=10");
+        assert!(!entry.raw.contains('\u{1b}'));
     }
 }

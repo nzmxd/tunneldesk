@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.14 - 2026-07-03
+
+- Fixed log rendering for existing ANSI-colored `tracing` log lines so levels parse correctly instead of showing as `UNKNOWN`.
+- Disabled ANSI escape output for new TunnelDesk log files.
+
 ## v0.1.13 - 2026-07-03
 
 - Reworked the Logs page into a compact live console inspired by Clash Verge, with level filtering, keyword search, regex/case/whole-word toggles, pause/resume, refresh, sort, and clear-view controls.
