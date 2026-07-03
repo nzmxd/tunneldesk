@@ -5,13 +5,15 @@ import { api } from '@/shared/api/tauri'
 import { commandErrorMessage } from '@/shared/api/commandError'
 import { DEFAULT_PROFILE_ID, DEFAULT_TUNNEL_ID, defaultProfiles, defaultSettings, defaultStatus } from '@/shared/domain/defaults'
 import { normalizeProfiles, normalizeSettings, normalizeStatus } from '@/shared/domain/normalize'
+import { validateProfileStart, type StartupValidationIssue } from '@/shared/domain/startupValidation'
 import { createTunnel, nextLocalIp, slugify, tunnelName as resolveTunnelName } from '@/shared/domain/tunnelFactory'
 import { findDuplicateListener } from '@/shared/domain/validators'
-import type { AppSettings, AppStatus, ProfilesFile, ProfilesImportApplyResult, ProfilesImportSession, ServiceConfig, ServiceProfile, TunnelConfig, TunnelMapping } from '@/shared/types'
+import type { AppSettings, AppStatus, ConfigBackupInfo, ProfilesFile, ProfilesImportApplyResult, ProfilesImportSession, ServiceConfig, ServiceProfile, TunnelConfig, TunnelMapping } from '@/shared/types'
 import { usePasswordStore } from './passwordStore'
 
 type MessageType = 'success' | 'error' | 'info'
 type MoveDirection = -1 | 1
+type DropPlacement = 'before' | 'after'
 
 interface ServiceGroupView {
   key: string
@@ -28,6 +30,13 @@ export const useAppStore = defineStore('app', () => {
   const message = ref('')
   const messageType = ref<MessageType>('info')
   const initialized = ref(false)
+  const savedProfilesSnapshot = ref('')
+  const savedProfilesBaseline = ref<ProfilesFile>(defaultProfiles())
+  const unsavedProfilesConfirmOpen = ref(false)
+  const pendingUnsavedProfilesAction = ref<(() => Promise<void>) | null>(null)
+  const startupValidationIssues = ref<StartupValidationIssue[]>([])
+  const startupValidationOpen = ref(false)
+  const configBackups = ref<ConfigBackupInfo[]>([])
 
   const currentProfile = computed(() => {
     return profiles.value.profiles.find((profile) => profile.id === settings.value.currentProfileId) || profiles.value.profiles[0]
@@ -61,6 +70,7 @@ export const useAppStore = defineStore('app', () => {
       .sort(compareText)
       .map((value) => ({ value })),
   )
+  const profilesDirty = computed(() => Boolean(savedProfilesSnapshot.value) && profilesSnapshot(profilesForSave()) !== savedProfilesSnapshot.value)
 
   function setMessage(type: MessageType, value: string) {
     messageType.value = type
@@ -69,6 +79,16 @@ export const useAppStore = defineStore('app', () => {
 
   function clearMessage() {
     message.value = ''
+  }
+
+  function syncProfilesSnapshot() {
+    const baseline = profilesForSave()
+    savedProfilesBaseline.value = cloneProfiles(baseline)
+    savedProfilesSnapshot.value = profilesSnapshot(baseline)
+  }
+
+  function restoreProfilesSnapshot() {
+    profiles.value = cloneProfiles(savedProfilesBaseline.value)
   }
 
   function ensureCurrentSelections() {
@@ -90,6 +110,7 @@ export const useAppStore = defineStore('app', () => {
     settings.value = normalizeSettings(loadedSettings)
     profiles.value = normalizeProfiles(loadedProfiles, settings.value.currentTunnelId)
     ensureCurrentSelections()
+    syncProfilesSnapshot()
     initialized.value = true
   }
 
@@ -142,7 +163,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function reload() {
-    await withBusy(refresh, '状态已刷新')
+    await runAfterUnsavedProfilesConfirm(() => withBusy(refresh, '状态已刷新').then(() => undefined))
   }
 
   async function persistSettings() {
@@ -192,6 +213,7 @@ export const useAppStore = defineStore('app', () => {
   async function saveProfiles() {
     await withBusy(async () => {
       profiles.value = normalizeProfiles(await api.saveProfiles(profilesForSave()), currentTunnel.value.id)
+      syncProfilesSnapshot()
       await refresh()
     }, '服务配置已保存')
   }
@@ -252,6 +274,7 @@ export const useAppStore = defineStore('app', () => {
         currentTunnel.value.id,
       )
       profiles.value = normalizeProfiles(await api.saveProfiles(nextProfiles), currentTunnel.value.id)
+      syncProfilesSnapshot()
       settings.value.currentProfileId = profile.id
       await persistSettings()
       await refreshStatus()
@@ -294,6 +317,7 @@ export const useAppStore = defineStore('app', () => {
         currentTunnel.value.id,
       )
       profiles.value = normalizeProfiles(await api.saveProfiles(nextProfiles), currentTunnel.value.id)
+      syncProfilesSnapshot()
       await refreshStatus()
       return true
     }, 'Profile 已重命名')
@@ -329,6 +353,7 @@ export const useAppStore = defineStore('app', () => {
         currentTunnel.value.id,
       )
       profiles.value = normalizeProfiles(await api.saveProfiles(nextProfiles), currentTunnel.value.id)
+      syncProfilesSnapshot()
       settings.value.currentProfileId = nextProfileId
       await persistSettings()
       await refreshStatus()
@@ -344,6 +369,10 @@ export const useAppStore = defineStore('app', () => {
       return
     }
     if (settings.value.currentProfileId === profileId) return
+    await runAfterUnsavedProfilesConfirm(() => selectProfileNow(profileId))
+  }
+
+  async function selectProfileNow(profileId: string) {
     const previousProfileId = settings.value.currentProfileId
     loading.value = true
     clearMessage()
@@ -433,14 +462,73 @@ export const useAppStore = defineStore('app', () => {
       const result = await api.applyProfilesImport(path, tunnelMappings)
       applyConfig(result.settings, result.profiles)
       await refreshStatus()
+      syncProfilesSnapshot()
+      await refreshConfigBackups()
       return result
     }, 'Profile 已导入')
   }
 
+  async function refreshConfigBackups() {
+    configBackups.value = await api.listConfigBackups()
+  }
+
+  async function restoreConfigBackup(backupId: string): Promise<boolean> {
+    const restored = await withBusy(async () => {
+      const result = await api.restoreConfigBackup(backupId)
+      applyConfig(result.settings, result.profiles)
+      await refreshStatus()
+      await refreshConfigBackups()
+      return true
+    }, '配置备份已恢复')
+    return Boolean(restored)
+  }
+
+  async function deleteConfigBackup(backupId: string): Promise<boolean> {
+    const deleted = await withBusy(async () => {
+      await api.deleteConfigBackup(backupId)
+      await refreshConfigBackups()
+      return true
+    }, '配置备份已删除')
+    return Boolean(deleted)
+  }
+
+  async function runAfterUnsavedProfilesConfirm(action: () => Promise<void>) {
+    if (!profilesDirty.value) {
+      await action()
+      return
+    }
+    pendingUnsavedProfilesAction.value = action
+    unsavedProfilesConfirmOpen.value = true
+  }
+
+  function cancelUnsavedProfilesAction() {
+    pendingUnsavedProfilesAction.value = null
+    unsavedProfilesConfirmOpen.value = false
+  }
+
+  async function confirmUnsavedProfilesAction() {
+    const action = pendingUnsavedProfilesAction.value
+    cancelUnsavedProfilesAction()
+    if (!action) return
+    restoreProfilesSnapshot()
+    await action()
+  }
+
   async function start() {
+    const issues = validateProfileStart(currentProfile.value, settings.value, status.value)
+    if (issues.length) {
+      startupValidationIssues.value = issues
+      startupValidationOpen.value = true
+      setMessage('error', '启动前检查失败')
+      return
+    }
     await withBusy(async () => {
       status.value = normalizeStatus(await api.startProfile())
     }, '隧道已启动')
+  }
+
+  function closeStartupValidation() {
+    startupValidationOpen.value = false
   }
 
   async function stop() {
@@ -492,6 +580,7 @@ export const useAppStore = defineStore('app', () => {
       ...draft,
       id: draft.id || slugify(draft.name),
       group,
+      remark: draft.remark || '',
       port: Number(draft.port),
       tunnelId: draft.tunnelId || currentTunnel.value.id,
       sortOrder: Number(draft.sortOrder) > 0 ? Number(draft.sortOrder) : nextServiceSortOrder(group),
@@ -512,6 +601,39 @@ export const useAppStore = defineStore('app', () => {
     }
     currentProfile.value.services.push(service)
     setMessage('info', '已添加服务，请保存后生效')
+    return true
+  }
+
+  function updateService(serviceId: string, draft: ServiceConfig): boolean {
+    const index = currentProfile.value.services.findIndex((service) => service.id === serviceId)
+    if (index === -1) {
+      setMessage('error', `服务不存在：${serviceId}`)
+      return false
+    }
+
+    const previous = currentProfile.value.services[index]
+    const service: ServiceConfig = {
+      ...previous,
+      ...draft,
+      id: previous.id,
+      group: normalizeServiceGroup(draft.group),
+      remark: draft.remark || '',
+      port: Number(draft.port),
+      tunnelId: draft.tunnelId || currentTunnel.value.id,
+      sortOrder: Number(draft.sortOrder) > 0 ? Number(draft.sortOrder) : previous.sortOrder,
+      enabled: draft.enabled ?? true,
+    }
+    if (!service.name || !service.domain || !service.localIp) {
+      setMessage('error', '请填写服务名、域名和本地 IP')
+      return false
+    }
+    const duplicate = findDuplicateListener(currentProfile.value.services, service)
+    if (duplicate) {
+      setMessage('error', `监听地址已被 ${duplicate.name} 使用`)
+      return false
+    }
+    currentProfile.value.services[index] = service
+    setMessage('info', '服务已更新，请保存后生效')
     return true
   }
 
@@ -562,6 +684,36 @@ export const useAppStore = defineStore('app', () => {
     setMessage('info', '服务顺序已调整，请保存后生效')
   }
 
+  function canReorderService(serviceId: string, targetServiceId: string): boolean {
+    if (serviceId === targetServiceId) return false
+    const service = currentProfile.value.services.find((item) => item.id === serviceId)
+    const target = currentProfile.value.services.find((item) => item.id === targetServiceId)
+    if (!service || !target) return false
+    return normalizeServiceGroup(service.group) === normalizeServiceGroup(target.group)
+  }
+
+  function reorderService(serviceId: string, targetServiceId: string, placement: DropPlacement = 'before'): boolean {
+    if (!canReorderService(serviceId, targetServiceId)) return false
+    const service = currentProfile.value.services.find((item) => item.id === serviceId)
+    const target = currentProfile.value.services.find((item) => item.id === targetServiceId)
+    if (!service || !target) return false
+
+    const groupServices = orderedGroupServices(normalizeServiceGroup(service.group))
+    const fromIndex = groupServices.findIndex((item) => item.id === serviceId)
+    const targetIndex = groupServices.findIndex((item) => item.id === targetServiceId)
+    if (fromIndex === -1 || targetIndex === -1) return false
+
+    const [moved] = groupServices.splice(fromIndex, 1)
+    const targetAfterRemovalIndex = groupServices.findIndex((item) => item.id === targetServiceId)
+    const insertIndex = placement === 'after' ? targetAfterRemovalIndex + 1 : targetAfterRemovalIndex
+    groupServices.splice(insertIndex, 0, moved)
+    groupServices.forEach((item, index) => {
+      item.sortOrder = (index + 1) * 10
+    })
+    setMessage('info', '服务顺序已调整，请保存后生效')
+    return true
+  }
+
   function nextServiceLocalIp() {
     return nextLocalIp(currentProfile.value.services)
   }
@@ -582,6 +734,10 @@ export const useAppStore = defineStore('app', () => {
     message,
     messageType,
     initialized,
+    unsavedProfilesConfirmOpen,
+    startupValidationIssues,
+    startupValidationOpen,
+    configBackups,
     currentProfile,
     currentTunnel,
     activeServices,
@@ -589,8 +745,13 @@ export const useAppStore = defineStore('app', () => {
     orderedCurrentServices,
     serviceGroups,
     serviceGroupOptions,
+    profilesDirty,
     setMessage,
     clearMessage,
+    runAfterUnsavedProfilesConfirm,
+    cancelUnsavedProfilesAction,
+    confirmUnsavedProfilesAction,
+    closeStartupValidation,
     bootstrap,
     refresh,
     refreshStatus,
@@ -611,6 +772,9 @@ export const useAppStore = defineStore('app', () => {
     exportAllProfiles,
     previewProfilesImport,
     applyProfilesImport,
+    refreshConfigBackups,
+    restoreConfigBackup,
+    deleteConfigBackup,
     start,
     stop,
     repairHosts,
@@ -619,9 +783,12 @@ export const useAppStore = defineStore('app', () => {
     addTunnel,
     removeTunnel,
     addService,
+    updateService,
     removeService,
     canMoveService,
     moveService,
+    canReorderService,
+    reorderService,
     nextServiceLocalIp,
     tunnelName,
     tunnelRunning,
@@ -638,6 +805,14 @@ function serviceGroupLabel(value?: string) {
 
 function compareText(left: string, right: string) {
   return left.localeCompare(right, 'zh-Hans-CN')
+}
+
+function cloneProfiles(value: ProfilesFile): ProfilesFile {
+  return JSON.parse(JSON.stringify(value)) as ProfilesFile
+}
+
+function profilesSnapshot(value: ProfilesFile) {
+  return JSON.stringify(value)
 }
 
 function serviceOrder(service: ServiceConfig) {

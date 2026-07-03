@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import ServiceForm from './ServiceForm.vue'
 import { defaultServiceDraft } from '@/shared/domain/defaults'
-import { loopbackIpRule, portRule, requiredRule } from '@/shared/domain/validators'
 import { useAppStore } from '@/stores/appStore'
 import type { ServiceConfig } from '@/shared/types'
 
@@ -14,7 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useAppStore()
-const formRef = ref()
+const serviceFormRef = ref()
 const form = reactive<ServiceConfig>(defaultServiceDraft())
 
 const drawerOpen = computed({
@@ -34,7 +34,7 @@ watch(
 )
 
 async function submit() {
-  await formRef.value?.validate()
+  await serviceFormRef.value?.validate()
   if (store.addService({ ...form })) {
     drawerOpen.value = false
   }
@@ -43,33 +43,7 @@ async function submit() {
 
 <template>
   <a-drawer v-model:open="drawerOpen" title="添加服务" width="460">
-    <a-form ref="formRef" :model="form" layout="vertical">
-      <a-form-item label="服务名" name="name" :rules="[requiredRule('请填写服务名')]">
-        <a-input v-model:value="form.name" />
-      </a-form-item>
-      <a-form-item label="分组" name="group">
-        <a-auto-complete v-model:value="form.group" class="w-full" :options="store.serviceGroupOptions" placeholder="未分组" />
-      </a-form-item>
-      <a-form-item label="域名" name="domain" :rules="[requiredRule('请填写真实域名')]">
-        <a-input v-model:value="form.domain" />
-      </a-form-item>
-      <a-form-item label="端口" name="port" :rules="[portRule()]">
-        <a-input-number v-model:value="form.port" class="w-full" :min="1" :max="65535" />
-      </a-form-item>
-      <a-form-item label="本地 IP" name="localIp" :rules="[loopbackIpRule()]">
-        <a-input v-model:value="form.localIp" />
-      </a-form-item>
-      <a-form-item label="隧道" name="tunnelId">
-        <a-select v-model:value="form.tunnelId">
-          <a-select-option v-for="tunnel in store.settings.tunnels" :key="tunnel.id" :value="tunnel.id">
-            {{ tunnel.name }}
-          </a-select-option>
-        </a-select>
-      </a-form-item>
-      <a-form-item label="启用" name="enabled">
-        <a-switch v-model:checked="form.enabled" />
-      </a-form-item>
-    </a-form>
+    <ServiceForm ref="serviceFormRef" :model="form" :service-group-options="store.serviceGroupOptions" :tunnels="store.settings.tunnels" />
     <template #footer>
       <div class="flex justify-end gap-2">
         <a-button @click="drawerOpen = false">取消</a-button>

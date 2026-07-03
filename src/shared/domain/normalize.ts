@@ -48,6 +48,7 @@ export function normalizeProfiles(value?: Partial<ProfilesFile> | null, fallback
         return {
           ...service,
           group: service.group?.trim() || '',
+          remark: service.remark || '',
           port: Number(service.port),
           tunnelId: service.tunnelId || fallbackTunnelId,
           sortOrder: Number.isFinite(sortOrder) && sortOrder > 0 ? sortOrder : (index + 1) * 10,

@@ -4,6 +4,8 @@ import type {
   AppLogEntry,
   AppSettings,
   AppStatus,
+  ConfigBackupInfo,
+  ConfigRestoreResult,
   ProfilesFile,
   ProfilesImportApplyResult,
   ProfilesImportPreview,
@@ -38,6 +40,12 @@ async function devInvoke<T>(cmd: string, args?: InvokeArgs): Promise<T> {
       return defaultProfiles() as T
     case 'save_profiles':
       return (args?.profiles || defaultProfiles()) as T
+    case 'list_config_backups':
+      return [] as T
+    case 'restore_config_backup':
+      return { settings: defaultSettings(), profiles: defaultProfiles() } as T
+    case 'delete_config_backup':
+      return undefined as T
     case 'export_profiles':
       return undefined as T
     case 'preview_profiles_import':
@@ -90,6 +98,10 @@ export const api = {
   setLaunchAtLogin: (enabled: boolean) => invokeCommand<boolean>('set_launch_at_login', { enabled }),
   loadProfiles: () => invokeCommand<ProfilesFile>('load_profiles'),
   saveProfiles: (profiles: ProfilesFile) => invokeCommand<ProfilesFile>('save_profiles', { profiles }),
+  listConfigBackups: () => invokeCommand<ConfigBackupInfo[]>('list_config_backups'),
+  restoreConfigBackup: (backupId: string) =>
+    invokeCommand<ConfigRestoreResult>('restore_config_backup', { backupId }),
+  deleteConfigBackup: (backupId: string) => invokeCommand<void>('delete_config_backup', { backupId }),
   exportProfiles: (path: string, profileIds: string[]) =>
     invokeCommand<void>('export_profiles', { path, profileIds }),
   previewProfilesImport: (path: string, tunnelMappings: TunnelMapping[]) =>

@@ -77,6 +77,7 @@ export function defaultServiceDraft(tunnelId = DEFAULT_TUNNEL_ID, localIp = '127
     name: '',
     group: '',
     domain: '',
+    remark: '',
     port: 3306,
     localIp,
     tunnelId,

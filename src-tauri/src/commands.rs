@@ -12,8 +12,8 @@ use crate::error::{to_command_error, AppError};
 use crate::health;
 use crate::hosts;
 use crate::model::{
-    AppSettings, AppStatus, AuthMethod, LogEntry, ProfilesFile, ServiceConfig, ServiceProfile,
-    ServiceStatus, TunnelConfig, TunnelStatus,
+    AppSettings, AppStatus, AuthMethod, ConfigBackupInfo, ConfigRestoreResult, LogEntry,
+    ProfilesFile, ServiceConfig, ServiceProfile, ServiceStatus, TunnelConfig, TunnelStatus,
 };
 use crate::profile_transfer::{ProfilesImportApplyResult, ProfilesImportPreview, TunnelMapping};
 use crate::startup;
@@ -60,8 +60,24 @@ pub fn save_profiles(profiles: ProfilesFile) -> CommandResult<ProfilesFile> {
     validation::validate_profiles(&profiles).map_err(to_command_error)?;
     let settings = config::load_settings().unwrap_or_default();
     validation::validate_tunnel_references(&settings, &profiles).map_err(to_command_error)?;
+    config::create_config_backup().map_err(to_command_error)?;
     config::save_profiles(&profiles).map_err(to_command_error)?;
     Ok(profiles)
+}
+
+#[tauri::command]
+pub fn list_config_backups() -> CommandResult<Vec<ConfigBackupInfo>> {
+    config::list_config_backups().map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn restore_config_backup(backup_id: String) -> CommandResult<ConfigRestoreResult> {
+    config::restore_config_backup(backup_id).map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn delete_config_backup(backup_id: String) -> CommandResult<()> {
+    config::delete_config_backup(backup_id).map_err(to_command_error)
 }
 
 #[tauri::command]
@@ -618,6 +634,7 @@ mod tests {
             name: String::from(id),
             group: String::new(),
             domain: format!("{id}.example.internal"),
+            remark: String::new(),
             port: 3306,
             local_ip: String::from("127.77.0.10"),
             tunnel_id: String::from("default"),

@@ -45,6 +45,10 @@ async function choose(action: Exclude<CloseAction, 'ask'>) {
 }
 
 async function handleCloseRequest() {
+  if (store.profilesDirty) {
+    await store.runAfterUnsavedProfilesConfirm(handleCloseRequest)
+    return
+  }
   const action = store.settings.behavior.closeAction
   if (action === 'minimizeToTray') {
     await minimizeToTray()

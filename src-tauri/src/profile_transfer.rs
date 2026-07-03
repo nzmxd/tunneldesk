@@ -138,7 +138,7 @@ pub fn apply_profiles_import(
     merged_settings.current_profile_id = first_imported_profile_id;
     validation::validate_settings_with_profiles(&merged_settings, &outcome.profiles)?;
 
-    let backup_path = config::backup_profiles_file()?;
+    let backup_path = config::create_config_backup()?;
     config::save_profiles(&outcome.profiles)?;
     settings.current_profile_id = merged_settings.current_profile_id;
     config::save_settings(&settings)?;
@@ -354,6 +354,7 @@ fn merge_profile_services(
                         name: existing_service_id.clone(),
                         group: String::new(),
                         domain: String::new(),
+                        remark: String::new(),
                         port: imported_service.port,
                         local_ip: imported_service.local_ip.clone(),
                         tunnel_id: imported_service.tunnel_id.clone(),
@@ -460,6 +461,7 @@ mod tests {
             name: id.to_string(),
             group: String::new(),
             domain: format!("{id}.example.internal"),
+            remark: String::new(),
             port,
             local_ip: local_ip.to_string(),
             tunnel_id: tunnel_id.to_string(),
@@ -502,6 +504,7 @@ mod tests {
                 "default",
                 vec![ServiceConfig {
                     domain: String::from("mysql.changed.internal"),
+                    remark: String::new(),
                     ..service("mysql", "default", "127.77.0.10", 3306)
                 }],
             ),

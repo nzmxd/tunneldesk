@@ -3,6 +3,7 @@ export interface ServiceConfig {
   name: string
   group: string
   domain: string
+  remark: string
   port: number
   localIp: string
   tunnelId: string

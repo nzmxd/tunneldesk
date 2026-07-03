@@ -274,6 +274,7 @@ mod tests {
             name: String::from("MySQL"),
             group: String::new(),
             domain: String::from("mysql.example.internal"),
+            remark: String::new(),
             port: 3306,
             local_ip: String::from("127.77.0.10"),
             tunnel_id: String::from("default"),

@@ -10,6 +10,9 @@ const mockApi = vi.hoisted(() => ({
   setLaunchAtLogin: vi.fn(),
   loadProfiles: vi.fn(),
   saveProfiles: vi.fn(),
+  listConfigBackups: vi.fn(),
+  restoreConfigBackup: vi.fn(),
+  deleteConfigBackup: vi.fn(),
   exportProfiles: vi.fn(),
   previewProfilesImport: vi.fn(),
   applyProfilesImport: vi.fn(),
@@ -46,6 +49,9 @@ describe('appStore', () => {
     mockApi.setLaunchAtLogin.mockResolvedValue(true)
     mockApi.loadProfiles.mockResolvedValue(defaultProfiles())
     mockApi.saveProfiles.mockImplementation(async (profiles) => profiles)
+    mockApi.listConfigBackups.mockResolvedValue([])
+    mockApi.restoreConfigBackup.mockResolvedValue({ settings: defaultSettings(), profiles: defaultProfiles() })
+    mockApi.deleteConfigBackup.mockResolvedValue(undefined)
     mockApi.exportProfiles.mockResolvedValue(undefined)
     mockApi.previewProfilesImport.mockResolvedValue(emptyImportPreview())
     mockApi.applyProfilesImport.mockResolvedValue({
@@ -114,6 +120,12 @@ describe('appStore', () => {
 
   it('starts and stops the active profile', async () => {
     const store = useAppStore()
+    mockApi.getStatus.mockResolvedValue({
+      ...defaultStatus(),
+      privilege: { ...defaultStatus().privilege, canModifyHosts: true },
+    })
+
+    await store.refresh()
 
     await store.start()
     expect(store.status.running).toBe(true)
@@ -141,6 +153,7 @@ describe('appStore', () => {
       name: 'MySQL',
       group: '',
       domain: 'mysql.internal',
+      remark: '',
       port: 3306,
       localIp: '127.77.0.10',
       tunnelId: 'default',
@@ -155,6 +168,72 @@ describe('appStore', () => {
     expect(store.currentProfile.services).toHaveLength(0)
   })
 
+  it('updates an existing service without changing its id', () => {
+    const store = useAppStore()
+
+    store.addService({
+      id: '',
+      name: 'MySQL',
+      group: '',
+      domain: 'mysql.internal',
+      remark: '',
+      port: 3306,
+      localIp: '127.77.0.10',
+      tunnelId: 'default',
+      sortOrder: 0,
+      enabled: true,
+    })
+
+    const updated = store.updateService('mysql', {
+      id: 'ignored',
+      name: 'Primary MySQL',
+      group: 'Database',
+      domain: 'primary-mysql.internal',
+      remark: 'Primary database',
+      port: 3307,
+      localIp: '127.77.0.11',
+      tunnelId: 'default',
+      sortOrder: 0,
+      enabled: false,
+    })
+
+    expect(updated).toBe(true)
+    expect(store.currentProfile.services[0]).toEqual(expect.objectContaining({
+      id: 'mysql',
+      name: 'Primary MySQL',
+      group: 'Database',
+      domain: 'primary-mysql.internal',
+      remark: 'Primary database',
+      port: 3307,
+      localIp: '127.77.0.11',
+      enabled: false,
+    }))
+  })
+
+  it('tracks unsaved profile changes and clears the flag after saving', async () => {
+    const store = useAppStore()
+
+    await store.refresh()
+    expect(store.profilesDirty).toBe(false)
+
+    store.addService({
+      id: '',
+      name: 'MySQL',
+      group: '',
+      domain: 'mysql.internal',
+      remark: '',
+      port: 3306,
+      localIp: '127.77.0.10',
+      tunnelId: 'default',
+      sortOrder: 0,
+      enabled: true,
+    })
+
+    expect(store.profilesDirty).toBe(true)
+    await store.saveProfiles()
+    expect(store.profilesDirty).toBe(false)
+  })
+
   it('groups services and moves order within a group', async () => {
     const store = useAppStore()
 
@@ -163,6 +242,7 @@ describe('appStore', () => {
       name: 'MySQL',
       group: 'Database',
       domain: 'mysql.internal',
+      remark: '',
       port: 3306,
       localIp: '127.77.0.10',
       tunnelId: 'default',
@@ -174,6 +254,7 @@ describe('appStore', () => {
       name: 'Postgres',
       group: 'Database',
       domain: 'postgres.internal',
+      remark: '',
       port: 5432,
       localIp: '127.77.0.11',
       tunnelId: 'default',
@@ -201,6 +282,51 @@ describe('appStore', () => {
         ],
       }),
     )
+  })
+
+  it('reorders services by dragging within the same group', () => {
+    const store = useAppStore()
+
+    store.addService({
+      id: '',
+      name: 'MySQL',
+      group: 'Database',
+      domain: 'mysql.internal',
+      remark: '',
+      port: 3306,
+      localIp: '127.77.0.10',
+      tunnelId: 'default',
+      sortOrder: 0,
+      enabled: true,
+    })
+    store.addService({
+      id: '',
+      name: 'Postgres',
+      group: 'Database',
+      domain: 'postgres.internal',
+      remark: '',
+      port: 5432,
+      localIp: '127.77.0.11',
+      tunnelId: 'default',
+      sortOrder: 0,
+      enabled: true,
+    })
+    store.addService({
+      id: '',
+      name: 'Redis',
+      group: 'Cache',
+      domain: 'redis.internal',
+      remark: '',
+      port: 6379,
+      localIp: '127.77.0.12',
+      tunnelId: 'default',
+      sortOrder: 0,
+      enabled: true,
+    })
+
+    expect(store.reorderService('postgres', 'mysql', 'before')).toBe(true)
+    expect(store.serviceGroups.find((group) => group.label === 'Database')?.services.map((service) => service.id)).toEqual(['postgres', 'mysql'])
+    expect(store.reorderService('mysql', 'redis', 'before')).toBe(false)
   })
 
   it('switches profiles by saving current profile selection', async () => {
@@ -371,6 +497,31 @@ describe('appStore', () => {
     expect(result?.backupPath).toBe('profiles-backup.json')
     expect(store.settings.currentProfileId).toBe('team')
     expect(store.profiles.profiles[0].id).toBe('team')
+    expect(mockApi.listConfigBackups).toHaveBeenCalled()
+  })
+
+  it('restores and deletes config backups', async () => {
+    const store = useAppStore()
+    const restoredProfiles = {
+      schemaVersion: 2,
+      profiles: [{ id: 'restored', name: 'Restored Profile', enabled: true, services: [] }],
+    }
+    mockApi.listConfigBackups.mockResolvedValue([{ id: 'backup-1', fileName: 'backup-1.json', createdAt: '2026-07-04T00:00:00+08:00' }])
+    mockApi.restoreConfigBackup.mockResolvedValue({
+      settings: { ...defaultSettings(), currentProfileId: 'restored' },
+      profiles: restoredProfiles,
+    })
+
+    await store.refreshConfigBackups()
+    const restored = await store.restoreConfigBackup('backup-1')
+    const deleted = await store.deleteConfigBackup('backup-1')
+
+    expect(store.configBackups).toHaveLength(1)
+    expect(restored).toBe(true)
+    expect(deleted).toBe(true)
+    expect(store.settings.currentProfileId).toBe('restored')
+    expect(store.profiles.profiles[0].id).toBe('restored')
+    expect(mockApi.deleteConfigBackup).toHaveBeenCalledWith('backup-1')
   })
 })
 

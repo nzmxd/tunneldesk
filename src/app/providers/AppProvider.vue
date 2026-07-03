@@ -3,7 +3,9 @@ import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { setTheme } from '@tauri-apps/api/app'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import CloseRequestDialog from './CloseRequestDialog.vue'
+import StartupValidationDialog from './StartupValidationDialog.vue'
 import ToastBridge from './ToastBridge.vue'
+import UnsavedProfilesDialog from './UnsavedProfilesDialog.vue'
 import { useAppStore } from '@/stores/appStore'
 import { useUpdateStore } from '@/stores/updateStore'
 import { useAntdTheme } from '@/app/theme/antdTheme'
@@ -52,6 +54,8 @@ onBeforeUnmount(() => {
     <a-app class="h-full">
       <slot />
       <CloseRequestDialog />
+      <StartupValidationDialog />
+      <UnsavedProfilesDialog />
       <ToastBridge />
     </a-app>
   </a-config-provider>

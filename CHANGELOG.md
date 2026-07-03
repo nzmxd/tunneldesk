@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.15 - 2026-07-04
+
+- Reworked Services into a read-only grouped table with drawer-based view/edit flows, domain copy actions, service remarks, and drag sorting within groups.
+- Added a shared service form, unsaved Profile change protection, startup configuration validation, and grouped Overview service status display.
+- Added automatic configuration backups before profile saves/imports, plus UI support for listing, restoring, and deleting backups.
+- Fixed title-bar double-click maximize behavior and tightened narrow-width table text rendering.
+
 ## v0.1.14 - 2026-07-03
 
 - Fixed log rendering for existing ANSI-colored `tracing` log lines so levels parse correctly instead of showing as `UNKNOWN`.

@@ -1,13 +1,13 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::Local;
 
 use crate::credential;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::model::{
-    AppSettings, ProfilesFile, APP_NAME, DEFAULT_TUNNEL_ID, PROFILES_SCHEMA_VERSION,
-    SETTINGS_SCHEMA_VERSION,
+    AppSettings, ConfigBackupFile, ConfigBackupInfo, ConfigRestoreResult, ProfilesFile, APP_NAME,
+    DEFAULT_TUNNEL_ID, PROFILES_SCHEMA_VERSION, SETTINGS_SCHEMA_VERSION,
 };
 
 pub fn app_dir() -> AppResult<PathBuf> {
@@ -93,27 +93,131 @@ pub fn save_profiles_to_path(path: PathBuf, profiles: &ProfilesFile) -> AppResul
     write_json_atomic(path, profiles)
 }
 
-pub fn backup_profiles_file() -> AppResult<PathBuf> {
-    backup_profiles_to_dir(profiles_path()?, backups_dir()?)
+pub fn create_config_backup() -> AppResult<PathBuf> {
+    create_config_backup_in_dir(backups_dir()?, load_settings()?, load_profiles()?)
 }
 
-pub fn backup_profiles_to_dir(source: PathBuf, backup_dir: PathBuf) -> AppResult<PathBuf> {
+pub fn create_config_backup_in_dir(
+    backup_dir: PathBuf,
+    settings: AppSettings,
+    profiles: ProfilesFile,
+) -> AppResult<PathBuf> {
     fs::create_dir_all(&backup_dir)?;
-    if !source.exists() {
-        let value = ProfilesFile::default();
-        write_json_atomic(source.clone(), &value)?;
-    }
-
-    let timestamp = Local::now().format("%Y%m%d-%H%M%S");
-    let mut candidate = backup_dir.join(format!("profiles-{timestamp}.json"));
+    let created_at = Local::now();
+    let timestamp = created_at.format("%Y%m%d-%H%M%S");
+    let mut candidate = backup_dir.join(format!("{timestamp}-config.json"));
     let mut suffix = 1;
     while candidate.exists() {
-        candidate = backup_dir.join(format!("profiles-{timestamp}-{suffix}.json"));
+        candidate = backup_dir.join(format!("{timestamp}-{suffix}-config.json"));
         suffix += 1;
     }
 
-    fs::copy(source, &candidate)?;
+    let backup = ConfigBackupFile {
+        schema_version: 1,
+        created_at: created_at.to_rfc3339(),
+        settings,
+        profiles,
+    };
+    write_json_atomic(candidate.clone(), &backup)?;
+    prune_config_backups_in_dir(&backup_dir, 20)?;
     Ok(candidate)
+}
+
+pub fn list_config_backups() -> AppResult<Vec<ConfigBackupInfo>> {
+    list_config_backups_in_dir(backups_dir()?)
+}
+
+pub fn list_config_backups_in_dir(backup_dir: PathBuf) -> AppResult<Vec<ConfigBackupInfo>> {
+    fs::create_dir_all(&backup_dir)?;
+    let mut backups = fs::read_dir(backup_dir)?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let metadata = entry.metadata().ok()?;
+            if !metadata.is_file() {
+                return None;
+            }
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if !file_name.ends_with("-config.json") {
+                return None;
+            }
+            let id = file_name.trim_end_matches(".json").to_string();
+            let path = entry.path();
+            let created_at = read_backup_created_at(&path)
+                .unwrap_or_else(|| backup_created_at_from_file_name(&file_name));
+            Some(ConfigBackupInfo {
+                id,
+                file_name,
+                created_at,
+            })
+        })
+        .collect::<Vec<_>>();
+    backups.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    Ok(backups)
+}
+
+pub fn restore_config_backup(backup_id: String) -> AppResult<ConfigRestoreResult> {
+    let backup = read_config_backup(backup_id)?;
+    validation_for_restore(&backup)?;
+    save_settings(&backup.settings)?;
+    save_profiles(&backup.profiles)?;
+    Ok(ConfigRestoreResult {
+        settings: load_settings()?,
+        profiles: load_profiles()?,
+    })
+}
+
+pub fn delete_config_backup(backup_id: String) -> AppResult<()> {
+    let path = config_backup_path(backup_id)?;
+    if !path.exists() {
+        return Err(AppError::Message(String::from("Backup not found")));
+    }
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+fn read_config_backup(backup_id: String) -> AppResult<ConfigBackupFile> {
+    let path = config_backup_path(backup_id)?;
+    let content = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&content)?)
+}
+
+fn config_backup_path(backup_id: String) -> AppResult<PathBuf> {
+    if backup_id.contains('/') || backup_id.contains('\\') || backup_id.contains("..") {
+        return Err(AppError::Message(String::from("Invalid backup id")));
+    }
+    Ok(backups_dir()?.join(format!("{backup_id}.json")))
+}
+
+fn read_backup_created_at(path: &Path) -> Option<String> {
+    let content = fs::read_to_string(path).ok()?;
+    let value = serde_json::from_str::<serde_json::Value>(&content).ok()?;
+    value
+        .get("createdAt")
+        .and_then(serde_json::Value::as_str)
+        .map(String::from)
+}
+
+fn backup_created_at_from_file_name(file_name: &str) -> String {
+    file_name
+        .split("-config.json")
+        .next()
+        .unwrap_or(file_name)
+        .to_string()
+}
+
+fn prune_config_backups_in_dir(backup_dir: &Path, keep: usize) -> AppResult<()> {
+    let backups = list_config_backups_in_dir(backup_dir.to_path_buf())?;
+    for backup in backups.into_iter().skip(keep) {
+        let path = backup_dir.join(format!("{}.json", backup.id));
+        if path.exists() {
+            fs::remove_file(path)?;
+        }
+    }
+    Ok(())
+}
+
+fn validation_for_restore(backup: &ConfigBackupFile) -> AppResult<()> {
+    crate::validation::validate_settings_with_profiles(&backup.settings, &backup.profiles)
 }
 
 fn read_settings_or_default(path: PathBuf) -> AppResult<AppSettings> {
@@ -392,17 +496,37 @@ mod tests {
     }
 
     #[test]
-    fn backs_up_profiles_with_timestamped_name() {
+    fn creates_config_backup_with_timestamped_name() {
         let temp = tempfile::tempdir().unwrap();
-        let source = temp.path().join("profiles.json");
         let backup_dir = temp.path().join("backups");
-        write_json_atomic(source.clone(), &ProfilesFile::default()).unwrap();
 
-        let backup = backup_profiles_to_dir(source, backup_dir).unwrap();
+        let backup = create_config_backup_in_dir(
+            backup_dir,
+            AppSettings::default(),
+            ProfilesFile::default(),
+        )
+        .unwrap();
         let file_name = backup.file_name().and_then(|name| name.to_str()).unwrap();
 
         assert!(backup.exists());
-        assert!(file_name.starts_with("profiles-"));
-        assert!(file_name.ends_with(".json"));
+        assert!(file_name.ends_with("-config.json"));
+    }
+
+    #[test]
+    fn prunes_old_config_backups() {
+        let temp = tempfile::tempdir().unwrap();
+        let backup_dir = temp.path().join("backups");
+
+        for _ in 0..22 {
+            create_config_backup_in_dir(
+                backup_dir.clone(),
+                AppSettings::default(),
+                ProfilesFile::default(),
+            )
+            .unwrap();
+        }
+
+        let backups = list_config_backups_in_dir(backup_dir).unwrap();
+        assert_eq!(backups.len(), 20);
     }
 }

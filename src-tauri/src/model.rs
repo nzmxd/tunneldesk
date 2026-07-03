@@ -159,6 +159,8 @@ pub struct ServiceConfig {
     #[serde(default = "default_service_group")]
     pub group: String,
     pub domain: String,
+    #[serde(default)]
+    pub remark: String,
     pub port: u16,
     pub local_ip: String,
     #[serde(default = "default_tunnel_id")]
@@ -196,6 +198,30 @@ impl Default for ProfilesFile {
             }],
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigBackupFile {
+    pub schema_version: u32,
+    pub created_at: String,
+    pub settings: AppSettings,
+    pub profiles: ProfilesFile,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigBackupInfo {
+    pub id: String,
+    pub file_name: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigRestoreResult {
+    pub settings: AppSettings,
+    pub profiles: ProfilesFile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

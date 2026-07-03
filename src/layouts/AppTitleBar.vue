@@ -26,7 +26,6 @@ function closeWindow() {
   <div
     data-tauri-drag-region
     class="app-titlebar grid h-[34px] select-none grid-cols-[1fr_auto] border-b border-[var(--line-soft)] bg-[var(--titlebar-bg)] text-[var(--text-primary)]"
-    @dblclick="toggleMaximize"
   >
     <div data-tauri-drag-region class="flex min-w-0 items-center gap-2 px-3">
       <div class="flex h-5 w-5 items-center justify-center rounded-md bg-[var(--brand-bg)] text-[12px] font-semibold text-white">T</div>

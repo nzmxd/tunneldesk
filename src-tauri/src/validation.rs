@@ -268,6 +268,7 @@ mod tests {
             name: String::from(id),
             group: String::new(),
             domain: format!("{id}.example.internal"),
+            remark: String::new(),
             port,
             local_ip: String::from(local_ip),
             tunnel_id: String::from(tunnel_id),

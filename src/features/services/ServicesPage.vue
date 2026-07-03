@@ -7,24 +7,31 @@ import {
   ImportOutlined,
   MoreOutlined,
   PlusOutlined,
+  RollbackOutlined,
   SaveOutlined,
 } from '@ant-design/icons-vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 import EmptyState from '@/shared/ui/EmptyState.vue'
 import { useAppStore } from '@/stores/appStore'
 import type { ProfilesImportSession, TunnelMapping } from '@/shared/types'
+import ConfigBackupsModal from './components/ConfigBackupsModal.vue'
 import ProfileImportPreviewModal from './components/ProfileImportPreviewModal.vue'
 import ServiceCreateDrawer from './components/ServiceCreateDrawer.vue'
+import ServiceEditDrawer from './components/ServiceEditDrawer.vue'
 import ServicesTable from './components/ServicesTable.vue'
 
 const store = useAppStore()
 const createOpen = ref(false)
+const editOpen = ref(false)
+const serviceDrawerMode = ref<'view' | 'edit'>('edit')
+const editingServiceId = ref<string | null>(null)
 const profileCreateOpen = ref(false)
 const profileName = ref('')
 const profileRenameOpen = ref(false)
 const profileRenameName = ref('')
 const profileDeleteOpen = ref(false)
 const importOpen = ref(false)
+const backupsOpen = ref(false)
 const importSession = ref<ProfilesImportSession | null>(null)
 
 type ProfileMenuClick = {
@@ -79,6 +86,11 @@ function handleProfileAction(action: string) {
     void openImportPreview()
     return
   }
+  if (action === 'backups') {
+    backupsOpen.value = true
+    void store.refreshConfigBackups()
+    return
+  }
   if (action === 'export-current') {
     void store.exportCurrentProfile()
     return
@@ -94,6 +106,18 @@ function handleProfileMenuClick(event: ProfileMenuClick) {
 
 function changeProfile(profileId: string) {
   void store.selectProfile(profileId)
+}
+
+function openViewService(serviceId: string) {
+  editingServiceId.value = serviceId
+  serviceDrawerMode.value = 'view'
+  editOpen.value = true
+}
+
+function openEditService(serviceId: string) {
+  editingServiceId.value = serviceId
+  serviceDrawerMode.value = 'edit'
+  editOpen.value = true
 }
 
 async function openImportPreview() {
@@ -157,6 +181,10 @@ async function applyProfilesImport() {
                 <template #icon><ImportOutlined /></template>
                 导入
               </a-menu-item>
+              <a-menu-item key="backups" :disabled="store.loading">
+                <template #icon><RollbackOutlined /></template>
+                配置备份
+              </a-menu-item>
               <a-menu-item key="export-current" :disabled="store.loading">
                 <template #icon><ExportOutlined /></template>
                 导出当前
@@ -173,7 +201,8 @@ async function applyProfilesImport() {
         <template #icon><PlusOutlined /></template>
         添加服务
       </a-button>
-      <a-button type="primary" :loading="store.loading" @click="store.saveProfiles">
+      <a-tag v-if="store.profilesDirty" color="warning">有未保存更改</a-tag>
+      <a-button :type="store.profilesDirty ? 'primary' : 'default'" :loading="store.loading" @click="store.saveProfiles">
         <template #icon><SaveOutlined /></template>
         保存服务
       </a-button>
@@ -187,11 +216,13 @@ async function applyProfilesImport() {
         <span class="card-title-meta">{{ store.currentProfile.services.length }} 个服务</span>
       </div>
     </template>
-    <ServicesTable v-if="store.currentProfile.services.length" />
+    <ServicesTable v-if="store.currentProfile.services.length" @view="openViewService" @edit="openEditService" />
     <EmptyState v-else description="暂无服务配置" />
   </a-card>
 
   <ServiceCreateDrawer v-model:open="createOpen" />
+  <ServiceEditDrawer v-model:open="editOpen" :service-id="editingServiceId" :mode="serviceDrawerMode" />
+  <ConfigBackupsModal v-model:open="backupsOpen" />
   <a-modal
     v-model:open="profileCreateOpen"
     title="新建 Profile"
