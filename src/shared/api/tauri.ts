@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { defaultProfiles, defaultSettings, defaultStatus } from '@/shared/domain/defaults'
 import type {
+  AppLogEntry,
   AppSettings,
   AppStatus,
   ProfilesFile,
@@ -53,6 +54,8 @@ async function devInvoke<T>(cmd: string, args?: InvokeArgs): Promise<T> {
       return defaultStatus() as T
     case 'stop_profile':
       return { ...defaultStatus(), running: false } as T
+    case 'read_logs':
+      return sampleLogEntries() as T
     case 'launch_at_login_enabled':
     case 'set_launch_at_login':
     case 'has_tunnel_password':
@@ -103,5 +106,51 @@ export const api = {
   getStatus: () => invokeCommand<AppStatus>('get_status'),
   testService: (serviceId: string) => invokeCommand<ServiceStatus>('test_service', { serviceId }),
   repairHosts: () => invokeCommand<void>('repair_hosts'),
+  readLogs: (maxLines = 600) => invokeCommand<AppLogEntry[]>('read_logs', { maxLines }),
   openLogDir: () => invokeCommand<void>('open_log_dir'),
+}
+
+function sampleLogEntries(): AppLogEntry[] {
+  return [
+    {
+      id: 'preview:1',
+      timestamp: '2026-07-03T13:56:23+08:00',
+      level: 'INFO',
+      target: 'tunneldesk_lib::commands',
+      message: 'Start profile config loaded service_count=3 elapsed_ms=4',
+      raw: '2026-07-03T13:56:23+08:00 INFO tunneldesk_lib::commands: Start profile config loaded service_count=3 elapsed_ms=4',
+    },
+    {
+      id: 'preview:2',
+      timestamp: '2026-07-03T13:56:24+08:00',
+      level: 'INFO',
+      target: 'tunneldesk_lib::commands',
+      message: 'Tunnel runtime started tunnel_id=default elapsed_ms=219 total_elapsed_ms=243',
+      raw: '2026-07-03T13:56:24+08:00 INFO tunneldesk_lib::commands: Tunnel runtime started tunnel_id=default elapsed_ms=219 total_elapsed_ms=243',
+    },
+    {
+      id: 'preview:3',
+      timestamp: '2026-07-03T13:56:41+08:00',
+      level: 'DEBUG',
+      target: 'tunneldesk_lib::health',
+      message: 'Checked local service mysql.internal:3306 state=healthy',
+      raw: '2026-07-03T13:56:41+08:00 DEBUG tunneldesk_lib::health: Checked local service mysql.internal:3306 state=healthy',
+    },
+    {
+      id: 'preview:4',
+      timestamp: '2026-07-03T13:56:54+08:00',
+      level: 'WARN',
+      target: 'tunneldesk_lib::hosts',
+      message: 'Skipped hosts cleanup on exit; direct hosts access is unavailable',
+      raw: '2026-07-03T13:56:54+08:00 WARN tunneldesk_lib::hosts: Skipped hosts cleanup on exit; direct hosts access is unavailable',
+    },
+    {
+      id: 'preview:5',
+      timestamp: '2026-07-03T13:57:11+08:00',
+      level: 'ERROR',
+      target: 'tunneldesk_lib::commands',
+      message: 'Failed to start profile: SSH authentication failed',
+      raw: '2026-07-03T13:57:11+08:00 ERROR tunneldesk_lib::commands: Failed to start profile: SSH authentication failed',
+    },
+  ]
 }

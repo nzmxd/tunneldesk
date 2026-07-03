@@ -277,6 +277,17 @@ pub struct AppStatus {
     pub services: Vec<ServiceStatus>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogEntry {
+    pub id: String,
+    pub timestamp: String,
+    pub level: String,
+    pub target: String,
+    pub message: String,
+    pub raw: String,
+}
+
 impl Default for AppStatus {
     fn default() -> Self {
         Self {

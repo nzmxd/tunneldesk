@@ -1,6 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::SystemTime;
 
 use tauri::State;
 
@@ -10,8 +12,8 @@ use crate::error::{to_command_error, AppError};
 use crate::health;
 use crate::hosts;
 use crate::model::{
-    AppSettings, AppStatus, AuthMethod, ProfilesFile, ServiceConfig, ServiceProfile, ServiceStatus,
-    TunnelConfig, TunnelStatus,
+    AppSettings, AppStatus, AuthMethod, LogEntry, ProfilesFile, ServiceConfig, ServiceProfile,
+    ServiceStatus, TunnelConfig, TunnelStatus,
 };
 use crate::profile_transfer::{ProfilesImportApplyResult, ProfilesImportPreview, TunnelMapping};
 use crate::startup;
@@ -399,6 +401,63 @@ pub fn repair_hosts() -> CommandResult<()> {
 }
 
 #[tauri::command]
+pub fn read_logs(max_lines: Option<usize>) -> CommandResult<Vec<LogEntry>> {
+    let max_lines = max_lines.unwrap_or(600).clamp(1, 2_000);
+    let logs_dir = config::logs_dir().map_err(to_command_error)?;
+    let mut files = fs::read_dir(logs_dir)
+        .map_err(|error| error.to_string())?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let metadata = entry.metadata().ok()?;
+            if !metadata.is_file() {
+                return None;
+            }
+
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if !file_name.starts_with("tunneldesk.log") {
+                return None;
+            }
+
+            let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+            Some((modified, entry.path(), file_name))
+        })
+        .collect::<Vec<_>>();
+
+    files.sort_by_key(|(modified, _, file_name)| {
+        (
+            modified
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default(),
+            file_name.clone(),
+        )
+    });
+
+    let mut entries = VecDeque::with_capacity(max_lines);
+    let recent_file_start = files.len().saturating_sub(8);
+
+    for (_, path, file_name) in files.into_iter().skip(recent_file_start) {
+        let Ok(content) = fs::read_to_string(path) else {
+            continue;
+        };
+
+        for (line_index, raw_line) in content.lines().enumerate() {
+            let raw = raw_line.trim_end().to_string();
+            if raw.trim().is_empty() {
+                continue;
+            }
+
+            let id = format!("{file_name}:{}", line_index + 1);
+            entries.push_back(parse_log_entry(id, raw));
+            if entries.len() > max_lines {
+                entries.pop_front();
+            }
+        }
+    }
+
+    Ok(entries.into_iter().collect())
+}
+
+#[tauri::command]
 pub fn open_log_dir() -> CommandResult<()> {
     let path = config::logs_dir().map_err(to_command_error)?;
     #[cfg(target_os = "windows")]
@@ -417,6 +476,64 @@ pub fn open_log_dir() -> CommandResult<()> {
         .spawn()
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+fn parse_log_entry(id: String, raw: String) -> LogEntry {
+    let tokens = raw.split_whitespace().collect::<Vec<_>>();
+    let level_position = tokens
+        .iter()
+        .enumerate()
+        .find_map(|(index, token)| normalize_log_level(token).map(|level| (index, level)));
+
+    let Some((level_index, level)) = level_position else {
+        return LogEntry {
+            id,
+            timestamp: String::new(),
+            level: String::from("UNKNOWN"),
+            target: String::new(),
+            message: raw.clone(),
+            raw,
+        };
+    };
+
+    let timestamp = tokens[..level_index].join(" ");
+    let after_level = tokens
+        .get(level_index + 1..)
+        .map(|items| items.join(" "))
+        .unwrap_or_default();
+    let (target, message) = after_level
+        .split_once(": ")
+        .map(|(target, message)| {
+            (
+                target.trim_end_matches(':').to_string(),
+                message.to_string(),
+            )
+        })
+        .unwrap_or_else(|| (String::new(), after_level));
+
+    LogEntry {
+        id,
+        timestamp,
+        level: String::from(level),
+        target,
+        message,
+        raw,
+    }
+}
+
+fn normalize_log_level(value: &str) -> Option<&'static str> {
+    match value
+        .trim_matches(|character: char| !character.is_ascii_alphabetic())
+        .to_ascii_uppercase()
+        .as_str()
+    {
+        "TRACE" => Some("TRACE"),
+        "DEBUG" => Some("DEBUG"),
+        "INFO" => Some("INFO"),
+        "WARN" | "WARNING" => Some("WARN"),
+        "ERROR" => Some("ERROR"),
+        _ => None,
+    }
 }
 
 fn current_profile(

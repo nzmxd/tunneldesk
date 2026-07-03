@@ -100,6 +100,7 @@ pub fn run() {
             commands::get_status,
             commands::test_service,
             commands::repair_hosts,
+            commands::read_logs,
             commands::open_log_dir
         ])
         .build(tauri::generate_context!())

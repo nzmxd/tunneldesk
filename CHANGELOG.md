@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.13 - 2026-07-03
+
+- Reworked the Logs page into a compact live console inspired by Clash Verge, with level filtering, keyword search, regex/case/whole-word toggles, pause/resume, refresh, sort, and clear-view controls.
+- Added a backend `read_logs` command that reads recent rolling TunnelDesk logs and returns structured timestamp, level, target, and message fields for the UI.
+- Added development-mode sample logs so the logging interface can be previewed and tested in the browser without a Tauri runtime.
+
 ## v0.1.12 - 2026-07-03
 
 - Added editable service groups and per-profile service ordering, with grouped Services and Overview displays.
