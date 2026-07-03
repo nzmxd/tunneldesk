@@ -47,6 +47,9 @@ async function submit() {
       <a-form-item label="服务名" name="name" :rules="[requiredRule('请填写服务名')]">
         <a-input v-model:value="form.name" />
       </a-form-item>
+      <a-form-item label="分组" name="group">
+        <a-auto-complete v-model:value="form.group" class="w-full" :options="store.serviceGroupOptions" placeholder="未分组" />
+      </a-form-item>
       <a-form-item label="域名" name="domain" :rules="[requiredRule('请填写真实域名')]">
         <a-input v-model:value="form.domain" />
       </a-form-item>

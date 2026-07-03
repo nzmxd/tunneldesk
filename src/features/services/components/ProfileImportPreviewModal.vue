@@ -39,8 +39,8 @@ const overwriteRows = computed(() =>
   (props.session?.preview.overwrites || []).map((item) => ({
     key: `${item.profileId}:${item.serviceId}`,
     service: `${item.profileName} / ${item.newName}`,
-    oldConfig: formatConfig(item.oldDomain, item.oldPort, item.oldLocalIp, item.oldTunnelId),
-    newConfig: formatConfig(item.newDomain, item.newPort, item.newLocalIp, item.newTunnelId),
+    oldConfig: formatConfig(item.oldGroup, item.oldDomain, item.oldPort, item.oldLocalIp, item.oldTunnelId, item.oldSortOrder),
+    newConfig: formatConfig(item.newGroup, item.newDomain, item.newPort, item.newLocalIp, item.newTunnelId, item.newSortOrder),
   })),
 )
 
@@ -69,8 +69,12 @@ watch(
   { immediate: true },
 )
 
-function formatConfig(domain: string, port: number, localIp: string, tunnelId: string) {
-  return `${domain}:${port} -> ${localIp}:${port} / ${store.tunnelName(tunnelId)}`
+function formatGroup(group: string) {
+  return group?.trim() || '未分组'
+}
+
+function formatConfig(group: string, domain: string, port: number, localIp: string, tunnelId: string, sortOrder: number) {
+  return `${formatGroup(group)} #${sortOrder || '-'} / ${domain}:${port} -> ${localIp}:${port} / ${store.tunnelName(tunnelId)}`
 }
 
 function mappingList(): TunnelMapping[] {

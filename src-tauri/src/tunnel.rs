@@ -1,3 +1,5 @@
+use std::io::{self, ErrorKind};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -77,17 +79,22 @@ pub async fn start(
         )));
     }
 
+    let mut listeners = Vec::new();
+    for service in enabled_services {
+        let listener = bind_local_listener(&service).await?;
+        listeners.push((service, listener));
+    }
+
     let handle = Arc::new(connect_and_authenticate(&tunnel.ssh, password).await?);
     let (stop_tx, _) = broadcast::channel(1);
     let mut listener_tasks = Vec::new();
 
-    for service in enabled_services {
-        let listener = TcpListener::bind(format!("{}:{}", service.local_ip, service.port)).await?;
+    for (service, listener) in listeners {
         let ssh = Arc::clone(&handle);
         let mut stop_rx = stop_tx.subscribe();
-        let service_name = service.name.clone();
 
         let task = tokio::spawn(async move {
+            let service_name = service.name.clone();
             info!(
                 "listening for {} on {}:{}",
                 service.name, service.local_ip, service.port
@@ -127,6 +134,64 @@ pub async fn start(
         listener_tasks,
         ssh: handle,
     })
+}
+
+async fn bind_local_listener(service: &ServiceConfig) -> AppResult<TcpListener> {
+    let socket_addr = service_socket_addr(service)?;
+    TcpListener::bind(socket_addr).await.map_err(|error| {
+        error!(
+            service_id = %service.id,
+            service_name = %service.name,
+            listener = %socket_addr,
+            raw_os_error = ?error.raw_os_error(),
+            error = %error,
+            "Failed to bind local listener"
+        );
+        listener_bind_error(service, &socket_addr.to_string(), error)
+    })
+}
+
+fn service_socket_addr(service: &ServiceConfig) -> AppResult<SocketAddr> {
+    let local_ip = service.local_ip.parse::<IpAddr>().map_err(|_| {
+        AppError::Message(format!(
+            "Local IP must be a valid loopback address for {}: {}",
+            service.name, service.local_ip
+        ))
+    })?;
+    Ok(SocketAddr::new(local_ip, service.port))
+}
+
+fn listener_bind_error(service: &ServiceConfig, address: &str, error: io::Error) -> AppError {
+    let prefix = format!(
+        "Cannot start local listener for service \"{}\" on {address}: {error}",
+        service.name
+    );
+    let message = match error.kind() {
+        ErrorKind::AddrInUse => format!(
+            "{prefix}. Another process is already using that listener, or a wildcard listener is using TCP port {}.",
+            service.port
+        ),
+        ErrorKind::AddrNotAvailable => format!(
+            "{prefix}. The local IP is not available on this machine. Use a loopback address such as 127.77.0.10."
+        ),
+        ErrorKind::PermissionDenied => format!("{prefix}. {}", listener_permission_hint(service.port)),
+        _ if is_windows_socket_permission_error(&error) => {
+            format!("{prefix}. {}", listener_permission_hint(service.port))
+        }
+        _ => prefix,
+    };
+
+    AppError::Message(message)
+}
+
+fn is_windows_socket_permission_error(error: &io::Error) -> bool {
+    error.raw_os_error() == Some(10013)
+}
+
+fn listener_permission_hint(port: u16) -> String {
+    format!(
+        "Windows denied this socket (WSAEACCES/os error 10013). This often means TCP port {port} is in an excluded/reserved range created by Hyper-V, WSL, Docker, VPN, or endpoint security. Check with: netsh interface ipv4 show excludedportrange protocol=tcp"
+    )
 }
 
 async fn connect_and_authenticate(
@@ -197,4 +262,42 @@ async fn forward_connection(
     let mut outbound = channel.into_stream();
     copy_bidirectional(&mut inbound, &mut outbound).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn service() -> ServiceConfig {
+        ServiceConfig {
+            id: String::from("mysql"),
+            name: String::from("MySQL"),
+            group: String::new(),
+            domain: String::from("mysql.example.internal"),
+            port: 3306,
+            local_ip: String::from("127.77.0.10"),
+            tunnel_id: String::from("default"),
+            sort_order: 10,
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn service_socket_addr_uses_configured_local_listener() {
+        let addr = service_socket_addr(&service()).expect("service address should parse");
+
+        assert_eq!(addr.to_string(), "127.77.0.10:3306");
+    }
+
+    #[test]
+    fn windows_socket_permission_error_mentions_excluded_port_check() {
+        let error = io::Error::from_raw_os_error(10013);
+
+        let message = listener_bind_error(&service(), "127.77.0.10:3306", error).to_string();
+
+        assert!(message.contains("MySQL"));
+        assert!(message.contains("127.77.0.10:3306"));
+        assert!(message.contains("os error 10013"));
+        assert!(message.contains("netsh interface ipv4 show excludedportrange"));
+    }
 }

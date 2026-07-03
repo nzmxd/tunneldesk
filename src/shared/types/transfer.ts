@@ -16,15 +16,19 @@ export interface ServiceOverwritePreview {
   profileName: string
   serviceId: string
   oldName: string
+  oldGroup: string
   oldDomain: string
   oldPort: number
   oldLocalIp: string
   oldTunnelId: string
+  oldSortOrder: number
   newName: string
+  newGroup: string
   newDomain: string
   newPort: number
   newLocalIp: string
   newTunnelId: string
+  newSortOrder: number
 }
 
 export interface ServiceImportConflict {

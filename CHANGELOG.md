@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.12 - 2026-07-03
+
+- Added editable service groups and per-profile service ordering, with grouped Services and Overview displays.
+- Added `group` and `sortOrder` service profile fields with backward-compatible migration for existing `profiles.json` files and imported profiles.
+- Improved Windows local listener failures by reporting the affected service/listener and explaining `os error 10013` reserved-port checks.
+- Added ERROR-level startup/listener failure logs and documented the runtime log filter override.
+
 ## v0.1.11 - 2026-07-03
 
 - Added service Profile creation, rename, and deletion from the Services page, with running-state guards and duplicate-name validation.

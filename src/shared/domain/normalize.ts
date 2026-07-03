@@ -43,12 +43,17 @@ export function normalizeProfiles(value?: Partial<ProfilesFile> | null, fallback
       id: profile.id || DEFAULT_PROFILE_ID,
       name: profile.name || 'Default Profile',
       enabled: profile.enabled ?? true,
-      services: (profile.services || []).map((service) => ({
-        ...service,
-        port: Number(service.port),
-        tunnelId: service.tunnelId || fallbackTunnelId,
-        enabled: service.enabled ?? true,
-      })),
+      services: (profile.services || []).map((service, index) => {
+        const sortOrder = Number(service.sortOrder)
+        return {
+          ...service,
+          group: service.group?.trim() || '',
+          port: Number(service.port),
+          tunnelId: service.tunnelId || fallbackTunnelId,
+          sortOrder: Number.isFinite(sortOrder) && sortOrder > 0 ? sortOrder : (index + 1) * 10,
+          enabled: service.enabled ?? true,
+        }
+      }),
     })),
   }
 }

@@ -139,10 +139,12 @@ describe('appStore', () => {
     const added = store.addService({
       id: '',
       name: 'MySQL',
+      group: '',
       domain: 'mysql.internal',
       port: 3306,
       localIp: '127.77.0.10',
       tunnelId: 'default',
+      sortOrder: 0,
       enabled: true,
     })
 
@@ -151,6 +153,54 @@ describe('appStore', () => {
 
     store.removeService('mysql')
     expect(store.currentProfile.services).toHaveLength(0)
+  })
+
+  it('groups services and moves order within a group', async () => {
+    const store = useAppStore()
+
+    store.addService({
+      id: '',
+      name: 'MySQL',
+      group: 'Database',
+      domain: 'mysql.internal',
+      port: 3306,
+      localIp: '127.77.0.10',
+      tunnelId: 'default',
+      sortOrder: 0,
+      enabled: true,
+    })
+    store.addService({
+      id: '',
+      name: 'Postgres',
+      group: 'Database',
+      domain: 'postgres.internal',
+      port: 5432,
+      localIp: '127.77.0.11',
+      tunnelId: 'default',
+      sortOrder: 0,
+      enabled: true,
+    })
+
+    expect(store.serviceGroups[0].label).toBe('Database')
+    expect(store.serviceGroups[0].services.map((service) => service.id)).toEqual(['mysql', 'postgres'])
+
+    store.moveService('postgres', -1)
+
+    expect(store.serviceGroups[0].services.map((service) => service.id)).toEqual(['postgres', 'mysql'])
+    await store.saveProfiles()
+
+    expect(mockApi.saveProfiles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profiles: [
+          expect.objectContaining({
+            services: [
+              expect.objectContaining({ id: 'postgres', group: 'Database', sortOrder: 10 }),
+              expect.objectContaining({ id: 'mysql', group: 'Database', sortOrder: 20 }),
+            ],
+          }),
+        ],
+      }),
+    )
   })
 
   it('switches profiles by saving current profile selection', async () => {
@@ -290,15 +340,19 @@ describe('appStore', () => {
           profileName: 'Default Profile',
           serviceId: 'mysql',
           oldName: 'MySQL',
+          oldGroup: '',
           oldDomain: 'mysql.old',
           oldPort: 3306,
           oldLocalIp: '127.77.0.10',
           oldTunnelId: 'default',
+          oldSortOrder: 10,
           newName: 'MySQL',
+          newGroup: 'Database',
           newDomain: 'mysql.new',
           newPort: 3306,
           newLocalIp: '127.77.0.10',
           newTunnelId: 'default',
+          newSortOrder: 20,
         },
       ],
     })

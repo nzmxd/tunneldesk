@@ -11,6 +11,14 @@ import type { AppSettings, AppStatus, ProfilesFile, ProfilesImportApplyResult, P
 import { usePasswordStore } from './passwordStore'
 
 type MessageType = 'success' | 'error' | 'info'
+type MoveDirection = -1 | 1
+
+interface ServiceGroupView {
+  key: string
+  value: string
+  label: string
+  services: ServiceConfig[]
+}
 
 export const useAppStore = defineStore('app', () => {
   const settings = ref<AppSettings>(defaultSettings())
@@ -31,6 +39,28 @@ export const useAppStore = defineStore('app', () => {
 
   const activeServices = computed(() => currentProfile.value.services.filter((service) => service.enabled))
   const profileTunnelIds = computed(() => Array.from(new Set(activeServices.value.map((service) => service.tunnelId))).filter(Boolean))
+  const orderedCurrentServices = computed(() => orderServices(currentProfile.value.services))
+  const serviceGroups = computed<ServiceGroupView[]>(() => {
+    const groups = new Map<string, ServiceGroupView>()
+    for (const service of orderedCurrentServices.value) {
+      const value = normalizeServiceGroup(service.group)
+      const key = value || '__ungrouped'
+      const group = groups.get(key) || {
+        key,
+        value,
+        label: serviceGroupLabel(value),
+        services: [],
+      }
+      group.services.push(service)
+      groups.set(key, group)
+    }
+    return Array.from(groups.values())
+  })
+  const serviceGroupOptions = computed(() =>
+    Array.from(new Set(currentProfile.value.services.map((service) => normalizeServiceGroup(service.group)).filter(Boolean)))
+      .sort(compareText)
+      .map((value) => ({ value })),
+  )
 
   function setMessage(type: MessageType, value: string) {
     messageType.value = type
@@ -161,9 +191,24 @@ export const useAppStore = defineStore('app', () => {
 
   async function saveProfiles() {
     await withBusy(async () => {
-      profiles.value = normalizeProfiles(await api.saveProfiles(normalizeProfiles(profiles.value, currentTunnel.value.id)), currentTunnel.value.id)
+      profiles.value = normalizeProfiles(await api.saveProfiles(profilesForSave()), currentTunnel.value.id)
       await refresh()
     }, '服务配置已保存')
+  }
+
+  function profilesForSave(): ProfilesFile {
+    const normalized = normalizeProfiles(profiles.value, currentTunnel.value.id)
+    return {
+      ...normalized,
+      profiles: normalized.profiles.map((profile) => ({
+        ...profile,
+        services: orderServices(profile.services).map((service, index) => ({
+          ...service,
+          group: normalizeServiceGroup(service.group),
+          sortOrder: (index + 1) * 10,
+        })),
+      })),
+    }
   }
 
   function nextProfileId(name: string) {
@@ -442,11 +487,14 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function addService(draft: ServiceConfig): boolean {
+    const group = normalizeServiceGroup(draft.group)
     const service: ServiceConfig = {
       ...draft,
       id: draft.id || slugify(draft.name),
+      group,
       port: Number(draft.port),
       tunnelId: draft.tunnelId || currentTunnel.value.id,
+      sortOrder: Number(draft.sortOrder) > 0 ? Number(draft.sortOrder) : nextServiceSortOrder(group),
       enabled: draft.enabled ?? true,
     }
     if (!service.name || !service.domain || !service.localIp) {
@@ -469,6 +517,49 @@ export const useAppStore = defineStore('app', () => {
 
   function removeService(serviceId: string) {
     currentProfile.value.services = currentProfile.value.services.filter((service) => service.id !== serviceId)
+  }
+
+  function nextServiceSortOrder(group: string) {
+    const groupKey = normalizeServiceGroup(group)
+    const maxOrder = currentProfile.value.services
+      .filter((service) => normalizeServiceGroup(service.group) === groupKey)
+      .reduce((max, service) => Math.max(max, Number(service.sortOrder) || 0), 0)
+    return maxOrder + 10
+  }
+
+  function orderedGroupServices(group: string) {
+    const groupKey = normalizeServiceGroup(group)
+    return orderServices(currentProfile.value.services).filter((service) => normalizeServiceGroup(service.group) === groupKey)
+  }
+
+  function resequenceGroup(group: string) {
+    orderedGroupServices(group).forEach((service, index) => {
+      service.sortOrder = (index + 1) * 10
+    })
+  }
+
+  function canMoveService(serviceId: string, direction: MoveDirection): boolean {
+    const service = currentProfile.value.services.find((item) => item.id === serviceId)
+    if (!service) return false
+    const groupServices = orderedGroupServices(normalizeServiceGroup(service.group))
+    const index = groupServices.findIndex((item) => item.id === serviceId)
+    if (index === -1) return false
+    return direction < 0 ? index > 0 : index < groupServices.length - 1
+  }
+
+  function moveService(serviceId: string, direction: MoveDirection) {
+    const service = currentProfile.value.services.find((item) => item.id === serviceId)
+    if (!service) return
+    const group = normalizeServiceGroup(service.group)
+    resequenceGroup(group)
+    const groupServices = orderedGroupServices(group)
+    const index = groupServices.findIndex((item) => item.id === serviceId)
+    const target = groupServices[index + direction]
+    if (!target) return
+    const currentOrder = service.sortOrder
+    service.sortOrder = target.sortOrder
+    target.sortOrder = currentOrder
+    setMessage('info', '服务顺序已调整，请保存后生效')
   }
 
   function nextServiceLocalIp() {
@@ -495,6 +586,9 @@ export const useAppStore = defineStore('app', () => {
     currentTunnel,
     activeServices,
     profileTunnelIds,
+    orderedCurrentServices,
+    serviceGroups,
+    serviceGroupOptions,
     setMessage,
     clearMessage,
     bootstrap,
@@ -526,8 +620,40 @@ export const useAppStore = defineStore('app', () => {
     removeTunnel,
     addService,
     removeService,
+    canMoveService,
+    moveService,
     nextServiceLocalIp,
     tunnelName,
     tunnelRunning,
   }
 })
+
+function normalizeServiceGroup(value?: string) {
+  return value?.trim() || ''
+}
+
+function serviceGroupLabel(value?: string) {
+  return normalizeServiceGroup(value) || '未分组'
+}
+
+function compareText(left: string, right: string) {
+  return left.localeCompare(right, 'zh-Hans-CN')
+}
+
+function serviceOrder(service: ServiceConfig) {
+  const value = Number(service.sortOrder)
+  return Number.isFinite(value) && value > 0 ? value : Number.MAX_SAFE_INTEGER
+}
+
+function orderServices(services: ServiceConfig[]) {
+  const originalIndex = new Map(services.map((service, index) => [service.id, index]))
+  return [...services].sort((left, right) => {
+    const groupCompare = compareText(serviceGroupLabel(left.group), serviceGroupLabel(right.group))
+    if (groupCompare !== 0) return groupCompare
+
+    const orderCompare = serviceOrder(left) - serviceOrder(right)
+    if (orderCompare !== 0) return orderCompare
+
+    return (originalIndex.get(left.id) ?? 0) - (originalIndex.get(right.id) ?? 0)
+  })
+}

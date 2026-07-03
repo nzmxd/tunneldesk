@@ -31,15 +31,19 @@ pub struct ServiceOverwritePreview {
     pub profile_name: String,
     pub service_id: String,
     pub old_name: String,
+    pub old_group: String,
     pub old_domain: String,
     pub old_port: u16,
     pub old_local_ip: String,
     pub old_tunnel_id: String,
+    pub old_sort_order: u32,
     pub new_name: String,
+    pub new_group: String,
     pub new_domain: String,
     pub new_port: u16,
     pub new_local_ip: String,
     pub new_tunnel_id: String,
+    pub new_sort_order: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -348,10 +352,12 @@ fn merge_profile_services(
                     .unwrap_or_else(|| ServiceConfig {
                         id: existing_service_id.clone(),
                         name: existing_service_id.clone(),
+                        group: String::new(),
                         domain: String::new(),
                         port: imported_service.port,
                         local_ip: imported_service.local_ip.clone(),
                         tunnel_id: imported_service.tunnel_id.clone(),
+                        sort_order: imported_service.sort_order,
                         enabled: false,
                     });
                 preview.conflicts.push(ServiceImportConflict {
@@ -377,15 +383,19 @@ fn merge_profile_services(
                 profile_name: target_profile.name.clone(),
                 service_id: old_service.id.clone(),
                 old_name: old_service.name.clone(),
+                old_group: old_service.group.clone(),
                 old_domain: old_service.domain.clone(),
                 old_port: old_service.port,
                 old_local_ip: old_service.local_ip.clone(),
                 old_tunnel_id: old_service.tunnel_id.clone(),
+                old_sort_order: old_service.sort_order,
                 new_name: imported_service.name.clone(),
+                new_group: imported_service.group.clone(),
                 new_domain: imported_service.domain.clone(),
                 new_port: imported_service.port,
                 new_local_ip: imported_service.local_ip.clone(),
                 new_tunnel_id: imported_service.tunnel_id.clone(),
+                new_sort_order: imported_service.sort_order,
             });
             listeners.remove(&listener_key(&old_service));
             listeners.insert(listener, imported_service.id.clone());
@@ -448,10 +458,12 @@ mod tests {
         ServiceConfig {
             id: id.to_string(),
             name: id.to_string(),
+            group: String::new(),
             domain: format!("{id}.example.internal"),
             port,
             local_ip: local_ip.to_string(),
             tunnel_id: tunnel_id.to_string(),
+            sort_order: 10,
             enabled: true,
         }
     }
@@ -591,5 +603,7 @@ mod tests {
 
         assert_eq!(imported.schema_version, 2);
         assert_eq!(imported.profiles[0].services[0].tunnel_id, "default");
+        assert_eq!(imported.profiles[0].services[0].group, "");
+        assert_eq!(imported.profiles[0].services[0].sort_order, 10);
     }
 }

@@ -10,6 +10,10 @@ pub fn default_tunnel_id() -> String {
     String::from(DEFAULT_TUNNEL_ID)
 }
 
+fn default_service_group() -> String {
+    String::new()
+}
+
 fn default_theme_mode() -> ThemeMode {
     ThemeMode::System
 }
@@ -152,11 +156,15 @@ impl Default for AppSettings {
 pub struct ServiceConfig {
     pub id: String,
     pub name: String,
+    #[serde(default = "default_service_group")]
+    pub group: String,
     pub domain: String,
     pub port: u16,
     pub local_ip: String,
     #[serde(default = "default_tunnel_id")]
     pub tunnel_id: String,
+    #[serde(default)]
+    pub sort_order: u32,
     pub enabled: bool,
 }
 

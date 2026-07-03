@@ -75,10 +75,12 @@ export function defaultServiceDraft(tunnelId = DEFAULT_TUNNEL_ID, localIp = '127
   return {
     id: '',
     name: '',
+    group: '',
     domain: '',
     port: 3306,
     localIp,
     tunnelId,
+    sortOrder: 0,
     enabled: true,
   }
 }

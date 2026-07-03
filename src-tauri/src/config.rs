@@ -222,10 +222,18 @@ fn migrate_profiles_value(value: &mut serde_json::Value) {
                 .get_mut("services")
                 .and_then(serde_json::Value::as_array_mut)
             {
-                for service in services {
+                for (index, service) in services.iter_mut().enumerate() {
                     if let Some(service) = service.as_object_mut() {
                         service.entry(String::from("tunnelId")).or_insert_with(|| {
                             serde_json::Value::String(String::from(DEFAULT_TUNNEL_ID))
+                        });
+                        service
+                            .entry(String::from("group"))
+                            .or_insert_with(|| serde_json::Value::String(String::new()));
+                        service.entry(String::from("sortOrder")).or_insert_with(|| {
+                            serde_json::Value::Number(serde_json::Number::from(
+                                ((index + 1) * 10) as u64,
+                            ))
                         });
                     }
                 }
@@ -379,6 +387,8 @@ mod tests {
             profiles.profiles[0].services[0].tunnel_id,
             DEFAULT_TUNNEL_ID
         );
+        assert_eq!(profiles.profiles[0].services[0].group, "");
+        assert_eq!(profiles.profiles[0].services[0].sort_order, 10);
     }
 
     #[test]

@@ -128,7 +128,18 @@ pub async fn test_ssh(tunnel_id: String) -> CommandResult<()> {
 
 #[tauri::command]
 pub async fn start_profile(state: State<'_, AppState>) -> CommandResult<AppStatus> {
-    start_profile_for_state(state.inner()).await
+    let started = std::time::Instant::now();
+    match start_profile_for_state(state.inner()).await {
+        Ok(status) => Ok(status),
+        Err(error) => {
+            tracing::error!(
+                elapsed_ms = started.elapsed().as_millis(),
+                error = %error,
+                "Failed to start profile"
+            );
+            Err(error)
+        }
+    }
 }
 
 pub async fn start_profile_for_state(state: &AppState) -> CommandResult<AppStatus> {
@@ -462,10 +473,12 @@ mod tests {
         ServiceConfig {
             id: String::from(id),
             name: String::from(id),
+            group: String::new(),
             domain: format!("{id}.example.internal"),
             port: 3306,
             local_ip: String::from("127.77.0.10"),
             tunnel_id: String::from("default"),
+            sort_order: 10,
             enabled: true,
         }
     }

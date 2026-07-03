@@ -10,13 +10,14 @@ const store = useAppStore()
 
 const columns: TableColumnsType<ServiceConfig> = [
   { title: '名称', dataIndex: 'name', key: 'name', width: 160 },
+  { title: '分组', dataIndex: 'group', key: 'group', width: 120 },
   { title: '域名', dataIndex: 'domain', key: 'domain', ellipsis: true },
   { title: '端口', dataIndex: 'port', key: 'port', width: 90 },
   { title: '隧道', dataIndex: 'tunnelId', key: 'tunnelId', width: 150 },
   { title: '状态', key: 'state', width: 120, fixed: 'right' },
 ]
 
-const services = computed(() => store.currentProfile.services)
+const services = computed(() => store.orderedCurrentServices)
 
 function statusFor(record: ServiceConfig) {
   return serviceStatusFor(record.id, store.status.services)
@@ -42,6 +43,9 @@ function statusFor(record: ServiceConfig) {
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'domain'">
           <span class="mono text-xs">{{ (record as ServiceConfig).domain }}</span>
+        </template>
+        <template v-else-if="column.key === 'group'">
+          {{ (record as ServiceConfig).group || '未分组' }}
         </template>
         <template v-else-if="column.key === 'tunnelId'">
           {{ store.tunnelName((record as ServiceConfig).tunnelId) }}

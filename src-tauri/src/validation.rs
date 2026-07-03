@@ -169,6 +169,12 @@ fn validate_profile(profile: &ServiceProfile) -> AppResult<()> {
                 service.id
             )));
         }
+        if service.group.chars().count() > 80 {
+            return Err(AppError::Message(format!(
+                "Service group is too long for {}",
+                service.name
+            )));
+        }
         if service.domain.trim().is_empty() {
             return Err(AppError::Message(format!(
                 "Service domain is required for {}",
@@ -260,10 +266,12 @@ mod tests {
         ServiceConfig {
             id: String::from(id),
             name: String::from(id),
+            group: String::new(),
             domain: format!("{id}.example.internal"),
             port,
             local_ip: String::from(local_ip),
             tunnel_id: String::from(tunnel_id),
+            sort_order: 10,
             enabled: true,
         }
     }

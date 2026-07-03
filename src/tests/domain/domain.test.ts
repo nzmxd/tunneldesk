@@ -50,10 +50,12 @@ describe('domain defaults and normalization', () => {
               {
                 id: 'mysql',
                 name: 'MySQL',
+                group: '',
                 domain: 'mysql.internal',
                 port: 3306,
                 localIp: '127.77.0.10',
                 tunnelId: '',
+                sortOrder: 0,
                 enabled: true,
               },
             ],
@@ -65,6 +67,7 @@ describe('domain defaults and normalization', () => {
 
     expect(profiles.schemaVersion).toBe(2)
     expect(profiles.profiles[0].services[0].tunnelId).toBe('jump')
+    expect(profiles.profiles[0].services[0].sortOrder).toBe(10)
   })
 
   it('normalizes status arrays', () => {
@@ -93,10 +96,12 @@ describe('domain factories and validators', () => {
         {
           id: 'mysql',
           name: 'MySQL',
+          group: '',
           domain: 'mysql.internal',
           port: 3306,
           localIp: '127.77.0.10',
           tunnelId: 'default',
+          sortOrder: 10,
           enabled: true,
         },
       ],

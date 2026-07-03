@@ -1,10 +1,12 @@
 export interface ServiceConfig {
   id: string
   name: string
+  group: string
   domain: string
   port: number
   localIp: string
   tunnelId: string
+  sortOrder: number
   enabled: boolean
 }
 

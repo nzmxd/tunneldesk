@@ -22,6 +22,7 @@ TunnelDesk does not enable TUN mode and does not change Clash, Mihomo, system pr
 
 - Multi-tunnel configuration: different services in the same profile can use different SSH jump hosts.
 - Profile-based service mappings: create, rename, delete, switch, import, and export service groups by project, environment, or team workflow.
+- Service grouping and ordering: organize services into editable groups and keep a stable display/startup order per profile.
 - Controlled hosts management: TunnelDesk writes only inside its own `# BEGIN TUNNELDESK` marker block.
 - Local loopback listeners: service domains resolve to addresses such as `127.77.0.10`, then TunnelDesk forwards traffic over SSH `direct-tcpip`.
 - Tunnel-scoped password storage: passwords are stored in the platform keyring and are never written to JSON settings files.
@@ -86,6 +87,19 @@ A profile can contain multiple enabled services. Each service has its own `tunne
 
 Only one profile is intended to run at a time. This keeps the hosts marker block deterministic and avoids conflicting local listener ownership.
 
+### Windows Socket Error 10013
+
+On some Windows machines, starting a profile can fail before SSH forwarding begins with `os error 10013` / `WSAEACCES`. TunnelDesk is trying to bind the configured local listener, for example `127.77.0.10:3306`, and Windows denied that socket.
+
+The most common cause is that the TCP port is in an excluded or reserved range created by Hyper-V, WSL, Docker, VPN software, Internet Connection Sharing, or endpoint security. Check the affected port in an elevated PowerShell window:
+
+```powershell
+netsh interface ipv4 show excludedportrange protocol=tcp
+netstat -ano | findstr :3306
+```
+
+If the port is in an excluded range, running TunnelDesk as Administrator usually does not bypass it. Use a service/application port outside the excluded range, or adjust the Windows component or security product that reserved the port.
+
 ## Configuration Files
 
 Runtime data is stored in the current user's data directory:
@@ -97,9 +111,11 @@ Runtime data is stored in the current user's data directory:
 Files created there include:
 
 - `settings.json`: selected profile, selected tunnel, tunnel metadata, SSH endpoint metadata, theme mode, and non-secret behavior settings.
-- `profiles.json`: service profiles, loopback mappings, selected tunnel ids, and enabled states.
+- `profiles.json`: service profiles, service groups/order, loopback mappings, selected tunnel ids, and enabled states.
 - `logs\`: rolling application logs.
 - `backups\`: hosts backups created when the app can write hosts directly, plus local `profiles.json` backups created before Profile imports. On Linux, the polkit helper stores hosts backups under `/var/lib/tunneldesk/backups`.
+
+Logs default to the `info` filter, which still records `warn` and `error` events. For more verbose troubleshooting, start TunnelDesk with `RUST_LOG=tunneldesk=debug,info`.
 
 Example service profiles live in [examples/service-profiles.example.json](examples/service-profiles.example.json). Real team profiles should be distributed out-of-band or imported through the UI, not committed with production hostnames.
 
