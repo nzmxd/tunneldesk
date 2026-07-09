@@ -1,8 +1,8 @@
 {
   "name": "tunneldesk",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "private": true,
-  "packageManager": "pnpm@10.24.0",
+  "packageManager": "pnpm@11.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

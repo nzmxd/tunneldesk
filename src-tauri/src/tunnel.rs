@@ -1,5 +1,6 @@
 use std::io::{self, ErrorKind};
 use std::net::{IpAddr, SocketAddr};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,9 +8,10 @@ use russh::client;
 use ssh_key::PublicKey;
 use tokio::io::copy_bidirectional;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
-use tracing::{error, info};
+use tokio::time::{sleep, Instant};
+use tracing::{error, info, warn};
 
 use crate::error::{AppError, AppResult};
 use crate::model::{AuthMethod, ServiceConfig, SshSettings, TunnelConfig};
@@ -31,7 +33,7 @@ pub struct TunnelRuntime {
     tunnel_id: String,
     stop_tx: broadcast::Sender<()>,
     listener_tasks: Vec<JoinHandle<()>>,
-    ssh: Arc<client::Handle<ClientHandler>>,
+    ssh: Arc<SshSessionManager>,
 }
 
 impl TunnelRuntime {
@@ -44,10 +46,134 @@ impl TunnelRuntime {
         for task in self.listener_tasks {
             task.abort();
         }
-        let _ = self
-            .ssh
-            .disconnect(russh::Disconnect::ByApplication, "TunnelDesk stopped", "")
-            .await;
+        self.ssh.stop().await;
+    }
+}
+
+type SshHandle = Arc<client::Handle<ClientHandler>>;
+
+struct SshSessionManager {
+    settings: SshSettings,
+    password: Option<String>,
+    current: Mutex<Option<SshHandle>>,
+    stopped: AtomicBool,
+}
+
+impl SshSessionManager {
+    async fn new(settings: SshSettings, password: Option<String>) -> AppResult<Self> {
+        let handle = Arc::new(connect_and_authenticate(&settings, password.clone()).await?);
+        Ok(Self {
+            settings,
+            password,
+            current: Mutex::new(Some(handle)),
+            stopped: AtomicBool::new(false),
+        })
+    }
+
+    async fn current_handle(&self) -> AppResult<SshHandle> {
+        if self.is_stopped() {
+            return Err(AppError::Message(String::from("Tunnel is stopped")));
+        }
+
+        let mut guard = self.current.lock().await;
+        if self.is_stopped() {
+            return Err(AppError::Message(String::from("Tunnel is stopped")));
+        }
+
+        if let Some(handle) = guard.as_ref() {
+            if !handle.is_closed() {
+                return Ok(Arc::clone(handle));
+            }
+
+            info!("SSH session is closed; reconnecting");
+            *guard = None;
+        }
+
+        let handle = self.reconnect_locked().await?;
+        *guard = Some(Arc::clone(&handle));
+        Ok(handle)
+    }
+
+    async fn mark_stale(&self, observed: &SshHandle, reason: &str) {
+        let mut guard = self.current.lock().await;
+        let is_current = guard
+            .as_ref()
+            .map(|current| Arc::ptr_eq(current, observed))
+            .unwrap_or(false);
+
+        if is_current {
+            info!(reason = %reason, "Marking SSH session stale");
+            *guard = None;
+        }
+    }
+
+    async fn stop(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
+        let handle = { self.current.lock().await.take() };
+        if let Some(handle) = handle {
+            let _ = handle
+                .disconnect(russh::Disconnect::ByApplication, "TunnelDesk stopped", "")
+                .await;
+        }
+    }
+
+    async fn reconnect_locked(&self) -> AppResult<SshHandle> {
+        let mut attempt = 0_u32;
+
+        loop {
+            if self.is_stopped() {
+                return Err(AppError::Message(String::from("Tunnel is stopped")));
+            }
+
+            attempt += 1;
+            match connect_and_authenticate(&self.settings, self.password.clone()).await {
+                Ok(handle) => {
+                    if self.is_stopped() {
+                        let _ = handle
+                            .disconnect(russh::Disconnect::ByApplication, "TunnelDesk stopped", "")
+                            .await;
+                        return Err(AppError::Message(String::from("Tunnel is stopped")));
+                    }
+
+                    info!(attempt, "SSH reconnect succeeded");
+                    return Ok(Arc::new(handle));
+                }
+                Err(error) => {
+                    let delay = reconnect_delay(attempt);
+                    warn!(
+                        attempt,
+                        retry_in_seconds = delay.as_secs(),
+                        error = %error,
+                        "SSH reconnect failed; retrying"
+                    );
+                    self.wait_for_retry_delay(delay).await;
+                }
+            }
+        }
+    }
+
+    async fn wait_for_retry_delay(&self, delay: Duration) {
+        let started = Instant::now();
+        let poll_interval = Duration::from_millis(250);
+
+        while !self.is_stopped() {
+            let elapsed = started.elapsed();
+            if elapsed >= delay {
+                break;
+            }
+
+            let remaining = delay.saturating_sub(elapsed);
+            let sleep_for = if remaining < poll_interval {
+                remaining
+            } else {
+                poll_interval
+            };
+            sleep(sleep_for).await;
+        }
+    }
+
+    fn is_stopped(&self) -> bool {
+        self.stopped.load(Ordering::SeqCst)
     }
 }
 
@@ -85,12 +211,12 @@ pub async fn start(
         listeners.push((service, listener));
     }
 
-    let handle = Arc::new(connect_and_authenticate(&tunnel.ssh, password).await?);
+    let ssh_manager = Arc::new(SshSessionManager::new(tunnel.ssh.clone(), password).await?);
     let (stop_tx, _) = broadcast::channel(1);
     let mut listener_tasks = Vec::new();
 
     for (service, listener) in listeners {
-        let ssh = Arc::clone(&handle);
+        let ssh = Arc::clone(&ssh_manager);
         let mut stop_rx = stop_tx.subscribe();
 
         let task = tokio::spawn(async move {
@@ -132,7 +258,7 @@ pub async fn start(
         tunnel_id: tunnel.id,
         stop_tx,
         listener_tasks,
-        ssh: handle,
+        ssh: ssh_manager,
     })
 }
 
@@ -243,25 +369,101 @@ async fn connect_and_authenticate(
 
 async fn forward_connection(
     mut inbound: TcpStream,
-    ssh: Arc<client::Handle<ClientHandler>>,
+    ssh: Arc<SshSessionManager>,
     service: ServiceConfig,
 ) -> AppResult<()> {
     let originator = inbound
         .peer_addr()
         .map(|addr| addr.ip().to_string())
         .unwrap_or_else(|_| String::from("127.0.0.1"));
-    let channel = ssh
+    let (handle, channel) = open_forward_channel(&ssh, &service, &originator).await?;
+    let mut outbound = channel.into_stream();
+    match copy_bidirectional(&mut inbound, &mut outbound).await {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            if should_reconnect_io_error(&error) {
+                ssh.mark_stale(&handle, &error.to_string()).await;
+            }
+            Err(AppError::Io(error))
+        }
+    }
+}
+
+async fn open_forward_channel(
+    ssh: &SshSessionManager,
+    service: &ServiceConfig,
+    originator: &str,
+) -> AppResult<(SshHandle, russh::Channel<client::Msg>)> {
+    let handle = ssh.current_handle().await?;
+    match open_forward_channel_once(&handle, service, originator).await {
+        Ok(channel) => Ok((handle, channel)),
+        Err(error) if should_reconnect_ssh_error(&error) => {
+            warn!(
+                service_id = %service.id,
+                service_name = %service.name,
+                error = %error,
+                "SSH channel open failed on current session; reconnecting"
+            );
+            ssh.mark_stale(&handle, &error.to_string()).await;
+
+            let handle = ssh.current_handle().await?;
+            match open_forward_channel_once(&handle, service, originator).await {
+                Ok(channel) => Ok((handle, channel)),
+                Err(error) => {
+                    if should_reconnect_ssh_error(&error) {
+                        ssh.mark_stale(&handle, &error.to_string()).await;
+                    }
+                    Err(AppError::Ssh(error.to_string()))
+                }
+            }
+        }
+        Err(error) => Err(AppError::Ssh(error.to_string())),
+    }
+}
+
+async fn open_forward_channel_once(
+    handle: &client::Handle<ClientHandler>,
+    service: &ServiceConfig,
+    originator: &str,
+) -> Result<russh::Channel<client::Msg>, russh::Error> {
+    handle
         .channel_open_direct_tcpip(
             service.domain.clone(),
             u32::from(service.port),
-            originator,
+            originator.to_string(),
             0,
         )
         .await
-        .map_err(|error| AppError::Ssh(error.to_string()))?;
-    let mut outbound = channel.into_stream();
-    copy_bidirectional(&mut inbound, &mut outbound).await?;
-    Ok(())
+}
+
+fn should_reconnect_ssh_error(error: &russh::Error) -> bool {
+    match error {
+        russh::Error::Disconnect
+        | russh::Error::HUP
+        | russh::Error::ConnectionTimeout
+        | russh::Error::KeepaliveTimeout
+        | russh::Error::InactivityTimeout
+        | russh::Error::SendError => true,
+        russh::Error::IO(error) => should_reconnect_io_error(error),
+        russh::Error::ChannelOpenFailure(_) => false,
+        _ => false,
+    }
+}
+
+fn should_reconnect_io_error(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        ErrorKind::BrokenPipe
+            | ErrorKind::ConnectionAborted
+            | ErrorKind::ConnectionReset
+            | ErrorKind::TimedOut
+            | ErrorKind::UnexpectedEof
+    )
+}
+
+fn reconnect_delay(attempt: u32) -> Duration {
+    let exponent = attempt.saturating_sub(1).min(5);
+    Duration::from_secs((1_u64 << exponent).min(30))
 }
 
 #[cfg(test)]
@@ -300,5 +502,30 @@ mod tests {
         assert!(message.contains("127.77.0.10:3306"));
         assert!(message.contains("os error 10013"));
         assert!(message.contains("netsh interface ipv4 show excludedportrange"));
+    }
+
+    #[test]
+    fn ssh_session_errors_trigger_reconnect() {
+        assert!(should_reconnect_ssh_error(&russh::Error::SendError));
+        assert!(should_reconnect_ssh_error(&russh::Error::Disconnect));
+        assert!(should_reconnect_ssh_error(&russh::Error::KeepaliveTimeout));
+    }
+
+    #[test]
+    fn channel_open_failures_do_not_trigger_reconnect() {
+        let connect_failed =
+            russh::Error::ChannelOpenFailure(russh::ChannelOpenFailure::ConnectFailed);
+        let administratively_prohibited =
+            russh::Error::ChannelOpenFailure(russh::ChannelOpenFailure::AdministrativelyProhibited);
+
+        assert!(!should_reconnect_ssh_error(&connect_failed));
+        assert!(!should_reconnect_ssh_error(&administratively_prohibited));
+    }
+
+    #[test]
+    fn reconnect_delay_caps_at_thirty_seconds() {
+        assert_eq!(reconnect_delay(1), Duration::from_secs(1));
+        assert_eq!(reconnect_delay(2), Duration::from_secs(2));
+        assert_eq!(reconnect_delay(10), Duration::from_secs(30));
     }
 }

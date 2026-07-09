@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.16 - 2026-07-09
+
+- Added automatic SSH session reconnection for keepalive, disconnect, send, and broken-pipe failures while keeping local listeners alive.
+- Serialized reconnect attempts across forwarded services with bounded retry backoff from 1 to 30 seconds.
+- Kept explicit `direct-tcpip` target failures such as `AdministrativelyProhibited` and `ConnectFailed` visible instead of retrying them as session drops.
+
 ## v0.1.15 - 2026-07-04
 
 - Reworked Services into a read-only grouped table with drawer-based view/edit flows, domain copy actions, service remarks, and drag sorting within groups.
