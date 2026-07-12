@@ -1,28 +1,42 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { DeleteOutlined, EditOutlined, EyeOutlined, HolderOutlined } from '@ant-design/icons-vue'
-import type { TableColumnsType } from 'ant-design-vue'
+import { computed, h, ref } from 'vue'
+import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, EyeOutlined, HolderOutlined, MoreOutlined } from '@ant-design/icons-vue'
+import { App, type TableColumnsType } from 'ant-design-vue'
 import type { ServiceConfig } from '@/shared/types'
 import CopyableDomain from '@/shared/ui/CopyableDomain.vue'
 import { useAppStore } from '@/stores/appStore'
 
 const store = useAppStore()
+const { modal } = App.useApp()
 const draggingServiceId = ref<string | null>(null)
 const dragOverServiceId = ref<string | null>(null)
 
-interface ServiceDragDataTransfer {
-  effectAllowed: string
-  dropEffect: string
-  setData: (format: string, data: string) => void
-  getData: (format: string) => string
-}
-
-interface ServiceDragEvent {
-  currentTarget: unknown
+interface ServicePointerEvent {
+  button: number
+  clientX: number
   clientY: number
-  dataTransfer?: ServiceDragDataTransfer | null
+  currentTarget: HTMLElement | null
+  pointerId: number
   preventDefault: () => void
 }
+
+interface ServiceKeyboardEvent {
+  key: string
+  preventDefault: () => void
+}
+
+const draggingPointerId = ref<number | null>(null)
+
+const props = defineProps<{
+  visibleServiceIds?: string[]
+}>()
+
+const visibleIdSet = computed(() => new Set(props.visibleServiceIds || store.orderedCurrentServices.map((service) => service.id)))
+const visibleGroups = computed(() =>
+  store.serviceGroups
+    .map((group) => ({ ...group, services: group.services.filter((service) => visibleIdSet.value.has(service.id)) }))
+    .filter((group) => group.services.length),
+)
 
 defineEmits<{
   view: [serviceId: string]
@@ -39,43 +53,79 @@ const columns: TableColumnsType<ServiceConfig> = [
   { title: '操作', key: 'actions', width: 136, fixed: 'right' },
 ]
 
-function customRow(record: ServiceConfig) {
-  return {
-    draggable: true,
-    onDragstart: (event: ServiceDragEvent) => {
-      draggingServiceId.value = record.id
-      dragOverServiceId.value = null
-      event.dataTransfer?.setData('text/plain', record.id)
-      if (event.dataTransfer) {
-        event.dataTransfer.effectAllowed = 'move'
-      }
-    },
-    onDragover: (event: ServiceDragEvent) => {
-      if (!draggingServiceId.value || !store.canReorderService(draggingServiceId.value, record.id)) return
-      event.preventDefault()
-      dragOverServiceId.value = record.id
-      if (event.dataTransfer) {
-        event.dataTransfer.dropEffect = 'move'
-      }
-    },
-    onDragleave: () => {
-      if (dragOverServiceId.value === record.id) {
-        dragOverServiceId.value = null
-      }
-    },
-    onDrop: (event: ServiceDragEvent) => {
-      event.preventDefault()
-      const serviceId = draggingServiceId.value || event.dataTransfer?.getData('text/plain')
-      if (serviceId) {
-        store.reorderService(serviceId, record.id, dropPlacement(event))
-      }
-      draggingServiceId.value = null
-      dragOverServiceId.value = null
-    },
-    onDragend: () => {
-      draggingServiceId.value = null
-      dragOverServiceId.value = null
-    },
+function beginPointerDrag(record: ServiceConfig, event: unknown) {
+  const pointerEvent = event as ServicePointerEvent
+  if (pointerEvent.button !== 0 || !pointerEvent.currentTarget) return
+  pointerEvent.preventDefault()
+  pointerEvent.currentTarget.setPointerCapture(pointerEvent.pointerId)
+  draggingServiceId.value = record.id
+  dragOverServiceId.value = null
+  draggingPointerId.value = pointerEvent.pointerId
+}
+
+function updatePointerDrag(event: unknown) {
+  const pointerEvent = event as ServicePointerEvent
+  if (draggingPointerId.value !== pointerEvent.pointerId || !draggingServiceId.value) return
+  pointerEvent.preventDefault()
+  const targetId = serviceIdAtPoint(pointerEvent)
+  dragOverServiceId.value = targetId && store.canReorderService(draggingServiceId.value, targetId) ? targetId : null
+}
+
+function endPointerDrag(event: unknown) {
+  const pointerEvent = event as ServicePointerEvent
+  if (draggingPointerId.value !== pointerEvent.pointerId) return
+  const sourceId = draggingServiceId.value
+  const targetId = dragOverServiceId.value || serviceIdAtPoint(pointerEvent)
+  if (sourceId && targetId && store.canReorderService(sourceId, targetId)) {
+    store.reorderService(sourceId, targetId, dropPlacement(targetId, pointerEvent.clientY))
+  }
+  if (pointerEvent.currentTarget?.hasPointerCapture(pointerEvent.pointerId)) {
+    pointerEvent.currentTarget.releasePointerCapture(pointerEvent.pointerId)
+  }
+  clearPointerDrag()
+}
+
+function cancelPointerDrag(event: unknown) {
+  const pointerEvent = event as ServicePointerEvent
+  if (draggingPointerId.value !== pointerEvent.pointerId) return
+  clearPointerDrag()
+}
+
+function clearPointerDrag() {
+  draggingServiceId.value = null
+  dragOverServiceId.value = null
+  draggingPointerId.value = null
+}
+
+function serviceIdAtPoint(event: ServicePointerEvent) {
+  const element = globalThis.document.elementFromPoint(event.clientX, event.clientY)
+  const row = element?.closest<HTMLElement>('tr[data-row-key]')
+  return row?.dataset.rowKey || null
+}
+
+function moveWithKeyboard(record: ServiceConfig, event: unknown) {
+  const keyboardEvent = event as ServiceKeyboardEvent
+  if (keyboardEvent.key !== 'ArrowUp' && keyboardEvent.key !== 'ArrowDown') return
+  keyboardEvent.preventDefault()
+  store.moveService(record.id, keyboardEvent.key === 'ArrowUp' ? -1 : 1)
+}
+
+function setEnabled(record: ServiceConfig, checked: boolean) {
+  record.enabled = checked
+  store.setMessage('info', `${record.name} 已${checked ? '启用' : '停用'}，保存后生效`)
+}
+
+function handleRowAction(action: string, record: ServiceConfig) {
+  if (action === 'delete') {
+    modal.confirm({
+      title: '删除服务？',
+      content: `确定删除「${record.name}」？保存服务配置后生效。`,
+      icon: h(ExclamationCircleOutlined),
+      okText: '删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => store.removeService(record.id),
+    })
   }
 }
 
@@ -87,16 +137,18 @@ function rowClassName(record: ServiceConfig) {
   ].filter(Boolean).join(' ')
 }
 
-function dropPlacement(event: ServiceDragEvent) {
-  const element = event.currentTarget as HTMLElement
-  const rect = element.getBoundingClientRect()
-  return event.clientY > rect.top + rect.height / 2 ? 'after' : 'before'
+function dropPlacement(targetId: string, clientY: number) {
+  const row = Array.from(globalThis.document.querySelectorAll<HTMLElement>('tr[data-row-key]'))
+    .find((element) => element.dataset.rowKey === targetId)
+  if (!row) return 'before'
+  const rect = row.getBoundingClientRect()
+  return clientY > rect.top + rect.height / 2 ? 'after' : 'before'
 }
 </script>
 
 <template>
   <div class="grid gap-4">
-    <section v-for="group in store.serviceGroups" :key="group.key" class="overflow-hidden rounded-md border border-[var(--line-soft)]">
+    <section v-for="group in visibleGroups" :key="group.key" class="overflow-hidden rounded-lg border border-[var(--line-soft)]">
       <div class="flex min-h-10 items-center justify-between gap-3 border-b border-[var(--line-soft)] px-3">
         <div class="min-w-0 font-medium text-[var(--text-primary)]">{{ group.label }}</div>
         <div class="shrink-0 text-xs text-[var(--text-muted)]">{{ group.services.length }} 个服务</div>
@@ -108,19 +160,33 @@ function dropPlacement(event: ServiceDragEvent) {
         :data-source="group.services"
         :pagination="false"
         :scroll="{ x: 1180 }"
-        :custom-row="customRow"
         :row-class-name="rowClassName"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'enabled'">
-            <a-tag :color="(record as ServiceConfig).enabled ? 'success' : 'default'">
-              {{ (record as ServiceConfig).enabled ? '启用' : '停用' }}
-            </a-tag>
+            <a-switch
+              size="small"
+              :checked="(record as ServiceConfig).enabled"
+              :aria-label="`${(record as ServiceConfig).name}启用状态`"
+              @change="(checked) => setEnabled(record as ServiceConfig, Boolean(checked))"
+            />
           </template>
           <template v-else-if="column.key === 'name'">
             <div class="flex min-w-0 items-center gap-2">
               <a-tooltip title="拖动排序">
-                <HolderOutlined class="service-drag-handle" />
+                <span
+                  class="service-drag-handle"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`拖动 ${(record as ServiceConfig).name} 排序`"
+                  @pointerdown="beginPointerDrag(record as ServiceConfig, $event)"
+                  @pointermove="updatePointerDrag"
+                  @pointerup="endPointerDrag"
+                  @pointercancel="cancelPointerDrag"
+                  @keydown="moveWithKeyboard(record as ServiceConfig, $event)"
+                >
+                  <HolderOutlined />
+                </span>
               </a-tooltip>
               <div class="min-w-0">
                 <span class="block truncate" :title="(record as ServiceConfig).name">{{ (record as ServiceConfig).name }}</span>
@@ -158,13 +224,21 @@ function dropPlacement(event: ServiceDragEvent) {
                   <template #icon><EditOutlined /></template>
                 </a-button>
               </a-tooltip>
-              <a-popconfirm title="删除这个服务？" ok-text="删除" cancel-text="取消" @confirm="store.removeService((record as ServiceConfig).id)">
-                <a-tooltip title="删除">
-                  <a-button danger type="text">
-                    <template #icon><DeleteOutlined /></template>
+              <a-dropdown trigger="click">
+                <a-tooltip title="更多操作">
+                  <a-button type="text" aria-label="更多操作">
+                    <template #icon><MoreOutlined /></template>
                   </a-button>
                 </a-tooltip>
-              </a-popconfirm>
+                <template #overlay>
+                  <a-menu @click="(event) => handleRowAction(String(event.key), record as ServiceConfig)">
+                    <a-menu-item key="delete" danger>
+                      <template #icon><DeleteOutlined /></template>
+                      删除
+                    </a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
             </a-space>
           </template>
         </template>
@@ -175,14 +249,33 @@ function dropPlacement(event: ServiceDragEvent) {
 
 <style scoped>
 .service-drag-handle {
+  display: inline-flex;
+  width: 24px;
+  height: 28px;
   flex: 0 0 auto;
   color: var(--text-muted);
   cursor: grab;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
   font-size: 15px;
+  touch-action: none;
+  user-select: none;
+}
+
+.service-drag-handle:hover,
+.service-drag-handle:focus-visible {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+  outline: none;
+}
+
+.service-drag-handle:active {
+  cursor: grabbing;
 }
 
 :deep(.service-row) {
-  cursor: grab;
+  cursor: default;
 }
 
 :deep(.service-row-dragging) {

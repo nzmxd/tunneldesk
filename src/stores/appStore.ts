@@ -30,6 +30,7 @@ export const useAppStore = defineStore('app', () => {
   const message = ref('')
   const messageType = ref<MessageType>('info')
   const initialized = ref(false)
+  const savedSettingsBaseline = ref<AppSettings>(defaultSettings())
   const savedProfilesSnapshot = ref('')
   const savedProfilesBaseline = ref<ProfilesFile>(defaultProfiles())
   const unsavedProfilesConfirmOpen = ref(false)
@@ -71,6 +72,10 @@ export const useAppStore = defineStore('app', () => {
       .map((value) => ({ value })),
   )
   const profilesDirty = computed(() => Boolean(savedProfilesSnapshot.value) && profilesSnapshot(profilesForSave()) !== savedProfilesSnapshot.value)
+  const currentTunnelDirty = computed(() => {
+    const savedTunnel = savedSettingsBaseline.value.tunnels.find((tunnel) => tunnel.id === currentTunnel.value.id)
+    return !savedTunnel || JSON.stringify(savedTunnel) !== JSON.stringify(currentTunnel.value)
+  })
 
   function setMessage(type: MessageType, value: string) {
     messageType.value = type
@@ -108,6 +113,7 @@ export const useAppStore = defineStore('app', () => {
 
   function applyConfig(loadedSettings: AppSettings, loadedProfiles: ProfilesFile) {
     settings.value = normalizeSettings(loadedSettings)
+    savedSettingsBaseline.value = cloneSettings(settings.value)
     profiles.value = normalizeProfiles(loadedProfiles, settings.value.currentTunnelId)
     ensureCurrentSelections()
     syncProfilesSnapshot()
@@ -168,6 +174,7 @@ export const useAppStore = defineStore('app', () => {
 
   async function persistSettings() {
     settings.value = normalizeSettings(await api.saveSettings(normalizeSettings(settings.value)))
+    savedSettingsBaseline.value = cloneSettings(settings.value)
     ensureCurrentSelections()
   }
 
@@ -746,6 +753,7 @@ export const useAppStore = defineStore('app', () => {
     serviceGroups,
     serviceGroupOptions,
     profilesDirty,
+    currentTunnelDirty,
     setMessage,
     clearMessage,
     runAfterUnsavedProfilesConfirm,
@@ -809,6 +817,10 @@ function compareText(left: string, right: string) {
 
 function cloneProfiles(value: ProfilesFile): ProfilesFile {
   return JSON.parse(JSON.stringify(value)) as ProfilesFile
+}
+
+function cloneSettings(value: AppSettings): AppSettings {
+  return JSON.parse(JSON.stringify(value)) as AppSettings
 }
 
 function profilesSnapshot(value: ProfilesFile) {

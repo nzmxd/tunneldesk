@@ -30,7 +30,7 @@ const hostsAccessColor = computed(() => (store.status.privilege.canModifyHosts ?
   <a-card :bordered="false" class="surface-card">
     <template #title>
       <div class="card-title">
-        <span class="card-title-main">诊断</span>
+        <span class="card-title-main">hosts 与权限</span>
       </div>
     </template>
     <a-alert
@@ -41,7 +41,7 @@ const hostsAccessColor = computed(() => (store.status.privilege.canModifyHosts ?
       message="当前无法修改 hosts"
       :description="store.status.privilege.message"
     />
-    <a-descriptions bordered size="small" :column="1">
+    <a-descriptions size="small" :column="1">
       <a-descriptions-item label="当前进程">
         <a-tag :color="store.status.privilege.process === 'root' ? 'success' : 'default'">
           {{ processLabel }}
@@ -66,7 +66,7 @@ const hostsAccessColor = computed(() => (store.status.privilege.canModifyHosts ?
         </a-tag>
       </a-descriptions-item>
       <a-descriptions-item label="运行状态">
-        {{ runningLabel(store.status.running) }}
+        <a-tag :color="store.status.running ? 'success' : 'default'">{{ runningLabel(store.status.running) }}</a-tag>
       </a-descriptions-item>
       <a-descriptions-item label="运行隧道">
         {{ store.status.runningTunnelIds.map(store.tunnelName).join(', ') || '无' }}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   DeleteOutlined,
   EditOutlined,
@@ -9,6 +10,7 @@ import {
   PlusOutlined,
   RollbackOutlined,
   SaveOutlined,
+  SearchOutlined,
 } from '@ant-design/icons-vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 import EmptyState from '@/shared/ui/EmptyState.vue'
@@ -19,8 +21,12 @@ import ProfileImportPreviewModal from './components/ProfileImportPreviewModal.vu
 import ServiceCreateDrawer from './components/ServiceCreateDrawer.vue'
 import ServiceEditDrawer from './components/ServiceEditDrawer.vue'
 import ServicesTable from './components/ServicesTable.vue'
+import { normalizeRouteAction, omitRouteAction } from '@/shared/domain/routeAction'
+import { serviceStatusFor } from '@/shared/domain/serviceStatus'
 
 const store = useAppStore()
+const route = useRoute()
+const router = useRouter()
 const createOpen = ref(false)
 const editOpen = ref(false)
 const serviceDrawerMode = ref<'view' | 'edit'>('edit')
@@ -33,6 +39,47 @@ const profileDeleteOpen = ref(false)
 const importOpen = ref(false)
 const backupsOpen = ref(false)
 const importSession = ref<ProfilesImportSession | null>(null)
+const searchText = ref('')
+const groupFilter = ref('all')
+const statusFilter = ref<'all' | 'enabled' | 'disabled' | 'abnormal'>('all')
+
+const groupOptions = computed(() => [
+  { value: 'all', label: '全部分组' },
+  ...store.serviceGroupOptions.map((option) => ({ value: option.value, label: option.value })),
+  { value: '__ungrouped', label: '未分组' },
+])
+const filteredServices = computed(() => {
+  const keyword = searchText.value.trim().toLocaleLowerCase()
+  return store.orderedCurrentServices.filter((service) => {
+    const groupMatches =
+      groupFilter.value === 'all' ||
+      (groupFilter.value === '__ungrouped' ? !service.group.trim() : service.group === groupFilter.value)
+    const status = serviceStatusFor(service.id, store.status.services)
+    const statusMatches =
+      statusFilter.value === 'all' ||
+      (statusFilter.value === 'enabled' && service.enabled) ||
+      (statusFilter.value === 'disabled' && !service.enabled) ||
+      (statusFilter.value === 'abnormal' && (status?.state === 'error' || status?.state === 'stopped'))
+    const searchMatches =
+      !keyword ||
+      `${service.name} ${service.domain} ${service.localIp} ${service.remark}`.toLocaleLowerCase().includes(keyword)
+    return groupMatches && statusMatches && searchMatches
+  })
+})
+
+onMounted(() => {
+  void consumeRouteAction()
+})
+
+async function consumeRouteAction() {
+  const action = normalizeRouteAction(route.query.action, ['import'] as const)
+  if (route.query.action !== undefined) {
+    await router.replace({ query: omitRouteAction(route.query) })
+  }
+  if (action === 'import') {
+    await openImportPreview()
+  }
+}
 
 type ProfileMenuClick = {
   key: string | number
@@ -145,7 +192,7 @@ async function applyProfilesImport() {
 </script>
 
 <template>
-  <PageHeader title="服务">
+  <PageHeader title="服务" description="管理本地服务、域名与隧道映射">
     <template #actions>
       <div class="flex items-center gap-1">
         <a-select
@@ -216,8 +263,40 @@ async function applyProfilesImport() {
         <span class="card-title-meta">{{ store.currentProfile.services.length }} 个服务</span>
       </div>
     </template>
-    <ServicesTable v-if="store.currentProfile.services.length" @view="openViewService" @edit="openEditService" />
-    <EmptyState v-else description="暂无服务配置" />
+    <div v-if="store.currentProfile.services.length" class="grid gap-4">
+      <div class="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--panel-subtle)] p-3">
+        <a-input v-model:value="searchText" allow-clear class="min-w-[220px] flex-1" placeholder="搜索名称、域名、IP 或备注">
+          <template #prefix><SearchOutlined /></template>
+        </a-input>
+        <a-select v-model:value="groupFilter" class="w-[150px]" :options="groupOptions" />
+        <a-select v-model:value="statusFilter" class="w-[140px]">
+          <a-select-option value="all">全部状态</a-select-option>
+          <a-select-option value="enabled">已启用</a-select-option>
+          <a-select-option value="disabled">已停用</a-select-option>
+          <a-select-option value="abnormal">仅看异常</a-select-option>
+        </a-select>
+        <span class="text-xs text-[var(--text-muted)]">{{ filteredServices.length }} / {{ store.currentProfile.services.length }}</span>
+      </div>
+      <ServicesTable
+        v-if="filteredServices.length"
+        :visible-service-ids="filteredServices.map((service) => service.id)"
+        @view="openViewService"
+        @edit="openEditService"
+      />
+      <EmptyState v-else description="没有符合当前筛选条件的服务" />
+    </div>
+    <EmptyState v-else description="暂无服务配置">
+      <template #actions>
+        <a-button type="primary" @click="createOpen = true">
+          <template #icon><PlusOutlined /></template>
+          添加服务
+        </a-button>
+        <a-button @click="openImportPreview">
+          <template #icon><ImportOutlined /></template>
+          导入配置
+        </a-button>
+      </template>
+    </EmptyState>
   </a-card>
 
   <ServiceCreateDrawer v-model:open="createOpen" />

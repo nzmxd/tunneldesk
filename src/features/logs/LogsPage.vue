@@ -194,17 +194,15 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="logs-page">
-    <PageHeader title="日志" class="logs-header">
+    <PageHeader title="日志" description="实时查看运行、健康检查与错误记录" class="logs-header">
       <template #actions>
-        <span class="log-refresh-state" :class="{ 'log-refresh-state-paused': paused }">
-          {{ refreshStateText }}
-        </span>
         <a-tooltip :title="paused ? '继续刷新' : '暂停刷新'">
-          <a-button class="log-action-button" @click="togglePaused">
+          <a-button class="log-live-button" :type="paused ? 'default' : 'primary'" ghost @click="togglePaused">
             <template #icon>
               <PlayCircleOutlined v-if="paused" />
               <PauseCircleOutlined v-else />
             </template>
+            {{ refreshStateText }}
           </a-button>
         </a-tooltip>
         <a-tooltip :title="sortDirection === 'asc' ? '新日志在底部' : '新日志在顶部'">
@@ -222,10 +220,19 @@ onBeforeUnmount(() => {
             <template #icon><FolderOpenOutlined /></template>
           </a-button>
         </a-tooltip>
-        <a-button type="primary" :disabled="!visibleEntries.length" @click="clearLogsView">
-          <template #icon><DeleteOutlined /></template>
-          清除
-        </a-button>
+        <a-popconfirm
+          title="清空当前日志视图？"
+          description="只隐藏当前显示的记录，不会删除日志文件。"
+          ok-text="清空视图"
+          cancel-text="取消"
+          :ok-button-props="{ danger: true }"
+          @confirm="clearLogsView"
+        >
+          <a-button danger :disabled="!visibleEntries.length">
+            <template #icon><DeleteOutlined /></template>
+            清空视图
+          </a-button>
+        </a-popconfirm>
       </template>
     </PageHeader>
 
@@ -323,18 +330,8 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
 }
 
-.log-refresh-state {
-  display: inline-flex;
-  min-width: 52px;
-  align-items: center;
-  justify-content: center;
-  color: #2563eb;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.log-refresh-state-paused {
-  color: #f59e0b;
+.log-live-button {
+  min-width: 84px;
 }
 
 .log-action-button {
@@ -349,9 +346,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--line-soft);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--panel-bg);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: var(--panel-shadow);
 }
 
 .log-toolbar {
@@ -404,6 +401,10 @@ onBeforeUnmount(() => {
   background: rgba(22, 119, 255, 0.1);
 }
 
+.log-mode-button-active {
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.3);
+}
+
 .log-summary {
   min-width: 86px;
   color: var(--text-muted);
@@ -428,6 +429,7 @@ onBeforeUnmount(() => {
   padding: 8px 16px;
   color: var(--text-primary);
   font-size: 14px;
+  font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
   line-height: 1.45;
 }
 

@@ -2,7 +2,6 @@
 import { ref } from 'vue'
 import AppTitleBar from './AppTitleBar.vue'
 import SidebarNav from './SidebarNav.vue'
-import TopBar from './TopBar.vue'
 
 const collapsed = ref(false)
 </script>
@@ -16,20 +15,17 @@ const collapsed = ref(false)
         breakpoint="lg"
         collapsible
         theme="light"
-        width="252"
-        :collapsed-width="68"
+        width="232"
+        :collapsed-width="64"
         class="app-sider"
       >
         <SidebarNav :collapsed="collapsed" />
       </a-layout-sider>
-      <a-layout class="min-w-0 bg-transparent">
-        <TopBar />
-        <a-layout-content class="min-h-0 overflow-hidden">
-          <div class="app-scrollbar h-full overflow-auto px-4 py-4 md:px-6 md:py-5">
-            <RouterView />
-          </div>
-        </a-layout-content>
-      </a-layout>
+      <a-layout-content class="min-h-0 min-w-0 overflow-hidden bg-transparent">
+        <div class="app-scrollbar h-full overflow-auto px-4 py-5 md:px-6 md:py-6 xl:px-7">
+          <RouterView />
+        </div>
+      </a-layout-content>
     </a-layout>
   </div>
 </template>

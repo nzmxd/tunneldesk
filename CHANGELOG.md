@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.17 - 2026-07-12
+
+- Rebuilt the desktop interface around the new TunnelDesk visual system, including the app shell, workbench, diagnostics, logs, tunnel, service, and settings pages.
+- Added a consistent cross-platform application and tray icon family generated from the new brand mark.
+- Added derived workbench status, quick actions, service filtering, and shared UI primitives while preserving existing configuration and backend command compatibility.
+- Replaced unreliable WebView HTML drag-and-drop service sorting with pointer-driven drag handling, and added an interaction test that verifies the reordered result.
+
 ## v0.1.16 - 2026-07-09
 
 - Added automatic SSH session reconnection for keepalive, disconnect, send, and broken-pipe failures while keeping local listeners alive.
