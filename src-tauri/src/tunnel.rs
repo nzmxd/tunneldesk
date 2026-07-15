@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::io::{self, ErrorKind};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,7 +12,7 @@ use tokio::io::copy_bidirectional;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Mutex};
 use tokio::task::{JoinHandle, JoinSet};
-use tokio::time::{sleep, Instant};
+use tokio::time::{sleep, timeout, Instant};
 use tracing::{error, info, warn};
 
 use crate::error::{AppError, AppResult};
@@ -20,6 +21,9 @@ use crate::model::{
 };
 
 type SharedServiceStatuses = Arc<RwLock<HashMap<String, ServiceStatus>>>;
+
+const SSH_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+const FORWARDING_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 struct ClientHandler;
@@ -75,7 +79,14 @@ struct SshSessionManager {
 
 impl SshSessionManager {
     async fn new(settings: SshSettings, password: Option<String>) -> AppResult<Self> {
-        let handle = Arc::new(connect_and_authenticate(&settings, password.clone()).await?);
+        let handle = Arc::new(
+            with_ssh_timeout(
+                "SSH connection",
+                SSH_CONNECT_TIMEOUT,
+                connect_and_authenticate(&settings, password.clone()),
+            )
+            .await?,
+        );
         Ok(Self {
             settings,
             password,
@@ -140,7 +151,13 @@ impl SshSessionManager {
             }
 
             attempt += 1;
-            match connect_and_authenticate(&self.settings, self.password.clone()).await {
+            match with_ssh_timeout(
+                "SSH connection",
+                SSH_CONNECT_TIMEOUT,
+                connect_and_authenticate(&self.settings, self.password.clone()),
+            )
+            .await
+            {
                 Ok(handle) => {
                     if self.is_stopped() {
                         let _ = handle
@@ -192,7 +209,12 @@ impl SshSessionManager {
 }
 
 pub async fn test_ssh(settings: &SshSettings, password: Option<String>) -> AppResult<()> {
-    let handle = connect_and_authenticate(settings, password).await?;
+    let handle = with_ssh_timeout(
+        "SSH connection",
+        SSH_CONNECT_TIMEOUT,
+        connect_and_authenticate(settings, password),
+    )
+    .await?;
     handle
         .disconnect(
             russh::Disconnect::ByApplication,
@@ -353,6 +375,7 @@ async fn preflight_services(
     ssh: Arc<SshSessionManager>,
     statuses: SharedServiceStatuses,
 ) {
+    let started = Instant::now();
     let mut tasks = JoinSet::new();
 
     for service in services.iter().cloned() {
@@ -393,12 +416,41 @@ async fn preflight_services(
             error!(error = %error, "SSH forwarding preflight task failed");
         }
     }
+
+    info!(
+        tunnel_id,
+        service_count = services.len(),
+        elapsed_ms = started.elapsed().as_millis(),
+        "SSH forwarding preflight completed"
+    );
 }
 
 async fn preflight_service(ssh: &SshSessionManager, service: &ServiceConfig) -> AppResult<()> {
-    let (_, channel) = open_forward_channel(ssh, service, "127.0.0.1").await?;
-    let _ = channel.close().await;
+    let (_, channel) = with_ssh_timeout(
+        "SSH forwarding preflight",
+        FORWARDING_PREFLIGHT_TIMEOUT,
+        open_forward_channel(ssh, service, "127.0.0.1"),
+    )
+    .await?;
+
+    // Channel::close awaits the bounded session command queue and can stall startup when
+    // several preflight channels finish together. ChannelStream performs the same close as a
+    // best-effort background task when dropped, so a confirmed channel never blocks startup.
+    drop(channel.into_stream());
     Ok(())
+}
+
+async fn with_ssh_timeout<T, F>(operation: &str, duration: Duration, future: F) -> AppResult<T>
+where
+    F: Future<Output = AppResult<T>>,
+{
+    match timeout(duration, future).await {
+        Ok(result) => result,
+        Err(_) => Err(AppError::Ssh(format!(
+            "{operation} timed out after {} ms",
+            duration.as_millis()
+        ))),
+    }
 }
 
 async fn bind_local_listener(service: &ServiceConfig) -> AppResult<TcpListener> {
@@ -717,6 +769,19 @@ mod tests {
             .expect("service status lock should be available");
         assert!(matches!(guard["mysql"].state, ServiceState::Healthy));
         assert!(matches!(guard["redis"].state, ServiceState::Checking));
+    }
+
+    #[tokio::test]
+    async fn ssh_operation_timeout_returns_instead_of_hanging() {
+        let result = with_ssh_timeout(
+            "SSH forwarding preflight",
+            Duration::from_millis(5),
+            std::future::pending::<AppResult<()>>(),
+        )
+        .await;
+
+        let error = result.expect_err("pending SSH operation should time out");
+        assert!(error.to_string().contains("timed out after 5 ms"));
     }
 
     #[test]

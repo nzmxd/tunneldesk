@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.19 - 2026-07-15
+
+- Fixed Profile startup hanging after SSH forwarding preflight channels opened successfully by making preflight channel cleanup non-blocking.
+- Added bounded SSH connection and forwarding preflight deadlines so unresponsive routes become service errors and the Start action always returns.
+
 ## v0.1.18 - 2026-07-15
 
 - Rejected malformed service domains before saving profiles or writing hosts entries, preventing accidental trailing quotes from bypassing local hostname mappings.
