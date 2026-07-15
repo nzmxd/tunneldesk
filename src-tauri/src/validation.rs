@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::net::IpAddr;
 
 use crate::error::{AppError, AppResult};
+use crate::hosts_core;
 use crate::model::{
     AppSettings, AuthMethod, ProfilesFile, ServiceProfile, SshSettings, TunnelConfig,
 };
@@ -175,12 +176,12 @@ fn validate_profile(profile: &ServiceProfile) -> AppResult<()> {
                 service.name
             )));
         }
-        if service.domain.trim().is_empty() {
-            return Err(AppError::Message(format!(
-                "Service domain is required for {}",
+        hosts_core::validate_domain(&service.domain).map_err(|error| {
+            AppError::Message(format!(
+                "Invalid domain for service {}: {error}",
                 service.name
-            )));
-        }
+            ))
+        })?;
         if service.tunnel_id.trim().is_empty() {
             return Err(AppError::Message(format!(
                 "Tunnel is required for service {}",
@@ -323,5 +324,19 @@ mod tests {
         let error = validate_profiles(&profiles).expect_err("duplicate listener should fail");
 
         assert!(error.to_string().contains("Duplicate local listener"));
+    }
+
+    #[test]
+    fn rejects_domain_with_trailing_quote() {
+        let mut invalid = service("mysql", DEFAULT_TUNNEL_ID, "127.77.0.10", 3306);
+        invalid.domain.push('\"');
+        let profiles = profile_with_services(vec![invalid]);
+
+        let error = validate_profiles(&profiles).expect_err("quoted domain should fail");
+
+        assert!(error
+            .to_string()
+            .contains("Invalid domain for service mysql"));
+        assert!(error.to_string().contains("invalid characters"));
     }
 }

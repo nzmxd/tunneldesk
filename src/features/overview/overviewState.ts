@@ -1,4 +1,4 @@
-import type { AppSettings, AppStatus, ServiceProfile, ServiceState } from '@/shared/types'
+import type { AppSettings, AppStatus, ServiceProfile } from '@/shared/types'
 import { validateProfileStart } from '@/shared/domain/startupValidation'
 
 export type OverviewTone = 'success' | 'warning' | 'danger' | 'neutral'
@@ -27,11 +27,12 @@ export function buildOverviewSummary(
   status: AppStatus,
 ): OverviewSummary {
   const enabledServices = profile.services.filter((service) => service.enabled)
-  const enabledServiceIds = new Set(enabledServices.map((service) => service.id))
-  const relevantStatuses = status.services.filter((service) => enabledServiceIds.has(service.serviceId))
-  const healthyServices = relevantStatuses.filter((service) => service.state === 'healthy').length
+  const statusesByServiceId = new Map(status.services.map((service) => [service.serviceId, service]))
+  const healthyServices = enabledServices.filter(
+    (service) => statusesByServiceId.get(service.id)?.state === 'healthy',
+  ).length
   const abnormalServices = status.running
-    ? relevantStatuses.filter((service) => isAbnormalState(service.state)).length
+    ? enabledServices.length - healthyServices
     : 0
   const usedTunnelIds = new Set(enabledServices.map((service) => service.tunnelId).filter(Boolean))
   const configuredTunnels = settings.tunnels.filter((tunnel) => usedTunnelIds.has(tunnel.id))
@@ -79,10 +80,6 @@ export function buildOverviewSummary(
     healthyServices,
     abnormalServices,
   }
-}
-
-function isAbnormalState(state: ServiceState) {
-  return state === 'error' || state === 'stopped'
 }
 
 function serviceStage(running: boolean, enabled: number, healthy: number, abnormal: number): OverviewStage {

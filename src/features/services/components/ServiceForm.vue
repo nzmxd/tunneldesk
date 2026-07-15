@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { loopbackIpRule, portRule, requiredRule } from '@/shared/domain/validators'
+import { domainRule, loopbackIpRule, portRule, requiredRule } from '@/shared/domain/validators'
 import type { ServiceConfig, TunnelConfig } from '@/shared/types'
 
 withDefaults(defineProps<{
@@ -31,7 +31,7 @@ defineExpose({
     <a-form-item label="分组" name="group">
       <a-auto-complete v-model:value="model.group" class="w-full" :options="serviceGroupOptions" placeholder="未分组" :disabled="readonly" />
     </a-form-item>
-    <a-form-item label="域名" name="domain" :rules="[requiredRule('请填写真实域名')]">
+    <a-form-item label="域名" name="domain" :rules="[domainRule()]">
       <a-input v-model:value="model.domain" :disabled="readonly" />
     </a-form-item>
     <a-form-item label="备注" name="remark">

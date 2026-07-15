@@ -3,7 +3,7 @@ import { defaultSettings } from '@/shared/domain/defaults'
 import { normalizeProfiles, normalizeSettings, normalizeStatus } from '@/shared/domain/normalize'
 import { serviceStateColor, serviceStateText } from '@/shared/domain/serviceStatus'
 import { nextLocalIp, nextTunnelId, slugify } from '@/shared/domain/tunnelFactory'
-import { findDuplicateListener, isLoopbackIp, isValidPort } from '@/shared/domain/validators'
+import { findDuplicateListener, isLoopbackIp, isValidDomain, isValidPort } from '@/shared/domain/validators'
 
 describe('domain defaults and normalization', () => {
   it('normalizes missing settings fields', () => {
@@ -89,6 +89,15 @@ describe('domain factories and validators', () => {
     expect(isValidPort(0)).toBe(false)
     expect(isLoopbackIp('127.77.0.10')).toBe(true)
     expect(isLoopbackIp('10.0.0.1')).toBe(false)
+  })
+
+  it('rejects malformed service domains', () => {
+    expect(isValidDomain('mysql.example.internal')).toBe(true)
+    expect(isValidDomain('mysql_service.example.internal')).toBe(true)
+    expect(isValidDomain('mysql.example.internal"')).toBe(false)
+    expect(isValidDomain(' mysql.example.internal')).toBe(false)
+    expect(isValidDomain('mysql example.internal')).toBe(false)
+    expect(isValidDomain('')).toBe(false)
   })
 
   it('detects duplicate listener pairs', () => {

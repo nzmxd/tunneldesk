@@ -13,7 +13,8 @@ use crate::health;
 use crate::hosts;
 use crate::model::{
     AppSettings, AppStatus, AuthMethod, ConfigBackupInfo, ConfigRestoreResult, LogEntry,
-    ProfilesFile, ServiceConfig, ServiceProfile, ServiceStatus, TunnelConfig, TunnelStatus,
+    ProfilesFile, ServiceConfig, ServiceProfile, ServiceState, ServiceStatus, TunnelConfig,
+    TunnelStatus,
 };
 use crate::profile_transfer::{ProfilesImportApplyResult, ProfilesImportPreview, TunnelMapping};
 use crate::startup;
@@ -306,14 +307,19 @@ pub fn get_status_for_state(state: &AppState) -> CommandResult<AppStatus> {
     let started = std::time::Instant::now();
     let settings = config::load_settings().unwrap_or_default();
     let profiles = config::load_profiles().unwrap_or_default();
-    let running_tunnel_ids = state
+    let (running_tunnel_ids, runtime_service_statuses) = state
         .tunnels
         .lock()
         .ok()
         .map(|guard| {
             let mut ids = guard.keys().cloned().collect::<Vec<_>>();
             ids.sort();
-            ids
+            let statuses = guard
+                .values()
+                .flat_map(|runtime| runtime.service_statuses())
+                .map(|status| (status.service_id.clone(), status))
+                .collect::<HashMap<_, _>>();
+            (ids, statuses)
         })
         .unwrap_or_default();
     let running = !running_tunnel_ids.is_empty();
@@ -329,9 +335,11 @@ pub fn get_status_for_state(state: &AppState) -> CommandResult<AppStatus> {
         .iter()
         .find(|profile| profile.id == current_profile_id)
         .map(|profile| {
-            collect_service_statuses(&profile.services, |service| {
-                health::service_status(&service)
-            })
+            service_statuses_for_profile(
+                &profile.services,
+                &running_tunnel_set,
+                &runtime_service_statuses,
+            )
         })
         .unwrap_or_default();
     let tunnel_statuses = settings
@@ -377,23 +385,40 @@ pub fn get_status_for_state(state: &AppState) -> CommandResult<AppStatus> {
     Ok(status)
 }
 
-fn collect_service_statuses<F>(services: &[ServiceConfig], checker: F) -> Vec<ServiceStatus>
-where
-    F: Fn(ServiceConfig) -> ServiceStatus + Sync,
-{
-    std::thread::scope(|scope| {
-        let checker = &checker;
-        let handles = services
-            .iter()
-            .cloned()
-            .map(|service| scope.spawn(move || checker(service)))
-            .collect::<Vec<_>>();
+fn service_statuses_for_profile(
+    services: &[ServiceConfig],
+    running_tunnel_ids: &HashSet<String>,
+    runtime_statuses: &HashMap<String, ServiceStatus>,
+) -> Vec<ServiceStatus> {
+    services
+        .iter()
+        .map(|service| {
+            if !service.enabled {
+                return ServiceStatus {
+                    service_id: service.id.clone(),
+                    state: ServiceState::Disabled,
+                    message: String::from("Disabled"),
+                };
+            }
 
-        handles
-            .into_iter()
-            .map(|handle| handle.join().expect("service status worker panicked"))
-            .collect::<Vec<_>>()
-    })
+            if !running_tunnel_ids.contains(&service.tunnel_id) {
+                return ServiceStatus {
+                    service_id: service.id.clone(),
+                    state: ServiceState::Stopped,
+                    message: String::from("Tunnel is not running"),
+                };
+            }
+
+            runtime_statuses
+                .get(&service.id)
+                .cloned()
+                .unwrap_or_else(|| ServiceStatus {
+                    service_id: service.id.clone(),
+                    state: ServiceState::Error,
+                    message: String::from("Service runtime status is unavailable"),
+                })
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -626,7 +651,6 @@ fn password_for_tunnel(tunnel: &TunnelConfig) -> Result<Option<String>, AppError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::ServiceState;
 
     fn service(id: &str) -> ServiceConfig {
         ServiceConfig {
@@ -644,18 +668,47 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_status_collection_returns_each_service() {
-        let services = vec![service("mysql"), service("redis")];
+    fn running_profile_uses_runtime_forwarding_status() {
+        let services = vec![service("mysql")];
+        let running_tunnels = HashSet::from([String::from("default")]);
+        let runtime_statuses = HashMap::from([(
+            String::from("mysql"),
+            ServiceStatus {
+                service_id: String::from("mysql"),
+                state: ServiceState::Error,
+                message: String::from("Failed to open channel (AdministrativelyProhibited)"),
+            },
+        )]);
 
-        let statuses = collect_service_statuses(&services, |service| ServiceStatus {
-            service_id: service.id,
-            state: ServiceState::Disabled,
-            message: String::from("checked"),
-        });
+        let statuses = service_statuses_for_profile(&services, &running_tunnels, &runtime_statuses);
 
-        assert_eq!(statuses.len(), 2);
-        assert_eq!(statuses[0].service_id, "mysql");
-        assert_eq!(statuses[1].service_id, "redis");
+        assert_eq!(statuses.len(), 1);
+        assert!(matches!(statuses[0].state, ServiceState::Error));
+        assert!(statuses[0].message.contains("AdministrativelyProhibited"));
+    }
+
+    #[test]
+    fn non_running_and_disabled_services_do_not_probe_local_listeners() {
+        let enabled = service("mysql");
+        let mut disabled = service("redis");
+        disabled.enabled = false;
+
+        let statuses =
+            service_statuses_for_profile(&[enabled, disabled], &HashSet::new(), &HashMap::new());
+
+        assert!(matches!(statuses[0].state, ServiceState::Stopped));
+        assert!(matches!(statuses[1].state, ServiceState::Disabled));
+    }
+
+    #[test]
+    fn missing_status_for_running_service_is_an_error() {
+        let services = vec![service("mysql")];
+        let running_tunnels = HashSet::from([String::from("default")]);
+
+        let statuses = service_statuses_for_profile(&services, &running_tunnels, &HashMap::new());
+
+        assert!(matches!(statuses[0].state, ServiceState::Error));
+        assert!(statuses[0].message.contains("unavailable"));
     }
 
     #[test]

@@ -71,4 +71,34 @@ describe('overview state', () => {
     expect(summary.title).toBe('需要处理')
     expect(summary.abnormalServices).toBe(1)
   })
+
+  it('reports a missing service status as abnormal while running', () => {
+    const { settings, profile, status } = readyFixture()
+    status.running = true
+    status.runningTunnelIds = ['default']
+    status.hostsBlockPresent = true
+    status.services = []
+
+    const summary = buildOverviewSummary(profile, settings, status)
+
+    expect(summary.title).toBe('需要处理')
+    expect(summary).toMatchObject({ healthyServices: 0, abnormalServices: 1 })
+    expect(summary.stages[0]).toMatchObject({ detail: '1 项异常', tone: 'danger' })
+  })
+
+  it.each(['checking', 'disabled'] as const)(
+    'reports a %s enabled service as abnormal while running',
+    (state) => {
+      const { settings, profile, status } = readyFixture()
+      status.running = true
+      status.runningTunnelIds = ['default']
+      status.hostsBlockPresent = true
+      status.services = [{ serviceId: 'mysql', state, message: state }]
+
+      const summary = buildOverviewSummary(profile, settings, status)
+
+      expect(summary.title).toBe('需要处理')
+      expect(summary).toMatchObject({ healthyServices: 0, abnormalServices: 1 })
+    },
+  )
 })

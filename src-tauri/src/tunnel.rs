@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use russh::client;
@@ -9,12 +10,16 @@ use ssh_key::PublicKey;
 use tokio::io::copy_bidirectional;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Mutex};
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::{sleep, Instant};
 use tracing::{error, info, warn};
 
 use crate::error::{AppError, AppResult};
-use crate::model::{AuthMethod, ServiceConfig, SshSettings, TunnelConfig};
+use crate::model::{
+    AuthMethod, ServiceConfig, ServiceState, ServiceStatus, SshSettings, TunnelConfig,
+};
+
+type SharedServiceStatuses = Arc<RwLock<HashMap<String, ServiceStatus>>>;
 
 #[derive(Clone)]
 struct ClientHandler;
@@ -34,11 +39,20 @@ pub struct TunnelRuntime {
     stop_tx: broadcast::Sender<()>,
     listener_tasks: Vec<JoinHandle<()>>,
     ssh: Arc<SshSessionManager>,
+    service_statuses: SharedServiceStatuses,
 }
 
 impl TunnelRuntime {
     pub fn tunnel_id(&self) -> &str {
         &self.tunnel_id
+    }
+
+    pub fn service_statuses(&self) -> Vec<ServiceStatus> {
+        let guard = match self.service_statuses.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        guard.values().cloned().collect()
     }
 
     pub async fn stop(self) {
@@ -206,17 +220,28 @@ pub async fn start(
     }
 
     let mut listeners = Vec::new();
-    for service in enabled_services {
-        let listener = bind_local_listener(&service).await?;
-        listeners.push((service, listener));
+    for service in &enabled_services {
+        let listener = bind_local_listener(service).await?;
+        listeners.push((service.clone(), listener));
     }
 
     let ssh_manager = Arc::new(SshSessionManager::new(tunnel.ssh.clone(), password).await?);
+    let tunnel_id = tunnel.id.clone();
+    let service_statuses = initial_service_statuses(&enabled_services);
+    preflight_services(
+        &tunnel_id,
+        &enabled_services,
+        Arc::clone(&ssh_manager),
+        Arc::clone(&service_statuses),
+    )
+    .await;
     let (stop_tx, _) = broadcast::channel(1);
     let mut listener_tasks = Vec::new();
 
     for (service, listener) in listeners {
         let ssh = Arc::clone(&ssh_manager);
+        let service_statuses = Arc::clone(&service_statuses);
+        let tunnel_id = tunnel_id.clone();
         let mut stop_rx = stop_tx.subscribe();
 
         let task = tokio::spawn(async move {
@@ -235,10 +260,31 @@ pub async fn start(
                         match accepted {
                             Ok((stream, _)) => {
                                 let ssh = Arc::clone(&ssh);
+                                let service_statuses = Arc::clone(&service_statuses);
                                 let service = service.clone();
+                                let tunnel_id = tunnel_id.clone();
                                 tokio::spawn(async move {
-                                    if let Err(error) = forward_connection(stream, ssh, service).await {
-                                        error!("forwarding failed: {error}");
+                                    let service_id = service.id.clone();
+                                    let service_name = service.name.clone();
+                                    let domain = service.domain.clone();
+                                    let port = service.port;
+                                    if let Err(error) = forward_connection(
+                                        stream,
+                                        ssh,
+                                        service,
+                                        service_statuses,
+                                    )
+                                    .await
+                                    {
+                                        error!(
+                                            tunnel_id = %tunnel_id,
+                                            service_id = %service_id,
+                                            service_name = %service_name,
+                                            domain = %domain,
+                                            port,
+                                            error = %error,
+                                            "Forwarding failed"
+                                        );
                                     }
                                 });
                             }
@@ -255,11 +301,104 @@ pub async fn start(
     }
 
     Ok(TunnelRuntime {
-        tunnel_id: tunnel.id,
+        tunnel_id,
         stop_tx,
         listener_tasks,
         ssh: ssh_manager,
+        service_statuses,
     })
+}
+
+fn initial_service_statuses(services: &[ServiceConfig]) -> SharedServiceStatuses {
+    Arc::new(RwLock::new(
+        services
+            .iter()
+            .map(|service| {
+                (
+                    service.id.clone(),
+                    ServiceStatus {
+                        service_id: service.id.clone(),
+                        state: ServiceState::Checking,
+                        message: String::from("Checking SSH forwarding"),
+                    },
+                )
+            })
+            .collect(),
+    ))
+}
+
+fn update_service_status(
+    statuses: &SharedServiceStatuses,
+    service_id: &str,
+    state: ServiceState,
+    message: String,
+) {
+    let mut guard = match statuses.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    guard.insert(
+        service_id.to_string(),
+        ServiceStatus {
+            service_id: service_id.to_string(),
+            state,
+            message,
+        },
+    );
+}
+
+async fn preflight_services(
+    tunnel_id: &str,
+    services: &[ServiceConfig],
+    ssh: Arc<SshSessionManager>,
+    statuses: SharedServiceStatuses,
+) {
+    let mut tasks = JoinSet::new();
+
+    for service in services.iter().cloned() {
+        let ssh = Arc::clone(&ssh);
+        let statuses = Arc::clone(&statuses);
+        let tunnel_id = tunnel_id.to_string();
+        tasks.spawn(async move {
+            match preflight_service(&ssh, &service).await {
+                Ok(()) => update_service_status(
+                    &statuses,
+                    &service.id,
+                    ServiceState::Healthy,
+                    String::from("SSH forwarding is available"),
+                ),
+                Err(error) => {
+                    update_service_status(
+                        &statuses,
+                        &service.id,
+                        ServiceState::Error,
+                        error.to_string(),
+                    );
+                    error!(
+                        tunnel_id = %tunnel_id,
+                        service_id = %service.id,
+                        service_name = %service.name,
+                        domain = %service.domain,
+                        port = service.port,
+                        error = %error,
+                        "SSH forwarding preflight failed"
+                    );
+                }
+            }
+        });
+    }
+
+    while let Some(result) = tasks.join_next().await {
+        if let Err(error) = result {
+            error!(error = %error, "SSH forwarding preflight task failed");
+        }
+    }
+}
+
+async fn preflight_service(ssh: &SshSessionManager, service: &ServiceConfig) -> AppResult<()> {
+    let (_, channel) = open_forward_channel(ssh, service, "127.0.0.1").await?;
+    let _ = channel.close().await;
+    Ok(())
 }
 
 async fn bind_local_listener(service: &ServiceConfig) -> AppResult<TcpListener> {
@@ -371,12 +510,32 @@ async fn forward_connection(
     mut inbound: TcpStream,
     ssh: Arc<SshSessionManager>,
     service: ServiceConfig,
+    service_statuses: SharedServiceStatuses,
 ) -> AppResult<()> {
     let originator = inbound
         .peer_addr()
         .map(|addr| addr.ip().to_string())
         .unwrap_or_else(|_| String::from("127.0.0.1"));
-    let (handle, channel) = open_forward_channel(&ssh, &service, &originator).await?;
+    let (handle, channel) = match open_forward_channel(&ssh, &service, &originator).await {
+        Ok(forwarding) => {
+            update_service_status(
+                &service_statuses,
+                &service.id,
+                ServiceState::Healthy,
+                String::from("SSH forwarding is available"),
+            );
+            forwarding
+        }
+        Err(error) => {
+            update_service_status(
+                &service_statuses,
+                &service.id,
+                ServiceState::Error,
+                error.to_string(),
+            );
+            return Err(error);
+        }
+    };
     let mut outbound = channel.into_stream();
     match copy_bidirectional(&mut inbound, &mut outbound).await {
         Ok(_) => Ok(()),
@@ -384,7 +543,14 @@ async fn forward_connection(
             if should_reconnect_io_error(&error) {
                 ssh.mark_stale(&handle, &error.to_string()).await;
             }
-            Err(AppError::Io(error))
+            let error = AppError::Io(error);
+            update_service_status(
+                &service_statuses,
+                &service.id,
+                ServiceState::Error,
+                error.to_string(),
+            );
+            Err(error)
         }
     }
 }
@@ -502,6 +668,55 @@ mod tests {
         assert!(message.contains("127.77.0.10:3306"));
         assert!(message.contains("os error 10013"));
         assert!(message.contains("netsh interface ipv4 show excludedportrange"));
+    }
+
+    #[test]
+    fn shared_service_status_tracks_latest_forwarding_result() {
+        let statuses = initial_service_statuses(&[service()]);
+
+        {
+            let guard = statuses
+                .read()
+                .expect("service status lock should be available");
+            let status = guard.get("mysql").expect("service status should exist");
+            assert!(matches!(status.state, ServiceState::Checking));
+        }
+
+        update_service_status(
+            &statuses,
+            "mysql",
+            ServiceState::Error,
+            String::from("Failed to open channel (AdministrativelyProhibited)"),
+        );
+
+        let guard = statuses
+            .read()
+            .expect("service status lock should be available");
+        let status = guard.get("mysql").expect("service status should exist");
+        assert!(matches!(status.state, ServiceState::Error));
+        assert!(status.message.contains("AdministrativelyProhibited"));
+    }
+
+    #[test]
+    fn updating_one_service_does_not_overwrite_another() {
+        let mut redis = service();
+        redis.id = String::from("redis");
+        redis.name = String::from("Redis");
+        redis.port = 6379;
+        let statuses = initial_service_statuses(&[service(), redis]);
+
+        update_service_status(
+            &statuses,
+            "mysql",
+            ServiceState::Healthy,
+            String::from("SSH forwarding is available"),
+        );
+
+        let guard = statuses
+            .read()
+            .expect("service status lock should be available");
+        assert!(matches!(guard["mysql"].state, ServiceState::Healthy));
+        assert!(matches!(guard["redis"].state, ServiceState::Checking));
     }
 
     #[test]

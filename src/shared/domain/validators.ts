@@ -9,6 +9,10 @@ export function isValidPort(value: number): boolean {
   return Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 65535
 }
 
+export function isValidDomain(value: string): boolean {
+  return value.length <= 253 && /^[a-zA-Z0-9._-]+$/.test(value)
+}
+
 export function findDuplicateListener(
   services: ServiceConfig[],
   candidate: Pick<ServiceConfig, 'localIp' | 'port' | 'id'>,
@@ -40,6 +44,21 @@ export function loopbackIpRule(): RuleObject {
     validator: async (_rule, value: string) => {
       if (!value || !isLoopbackIp(value)) {
         return Promise.reject(new Error('本地 IP 必须是 127.x.x.x 回环地址'))
+      }
+      return Promise.resolve()
+    },
+    trigger: 'blur',
+  }
+}
+
+export function domainRule(): RuleObject {
+  return {
+    validator: async (_rule, value: string) => {
+      if (!value) {
+        return Promise.reject(new Error('请填写真实域名'))
+      }
+      if (!isValidDomain(value)) {
+        return Promise.reject(new Error('域名只能包含字母、数字、点、连字符和下划线，且不能包含空格或引号'))
       }
       return Promise.resolve()
     },

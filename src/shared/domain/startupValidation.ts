@@ -1,5 +1,5 @@
 import type { AppSettings, AppStatus, ServiceProfile } from '@/shared/types'
-import { findDuplicateListener, isLoopbackIp, isValidPort } from './validators'
+import { findDuplicateListener, isLoopbackIp, isValidDomain, isValidPort } from './validators'
 
 export interface StartupValidationIssue {
   id: string
@@ -22,6 +22,8 @@ export function validateProfileStart(
     }
     if (!service.domain.trim()) {
       issues.push({ id: `${service.id}:domain`, message: `${label} 缺少域名` })
+    } else if (!isValidDomain(service.domain)) {
+      issues.push({ id: `${service.id}:domain`, message: `${label} 的域名格式无效` })
     }
     if (!service.localIp.trim()) {
       issues.push({ id: `${service.id}:localIp:empty`, message: `${label} 缺少本地 IP` })

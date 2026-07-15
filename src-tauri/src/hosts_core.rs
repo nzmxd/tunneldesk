@@ -139,7 +139,7 @@ fn validate_loopback_ipv4(value: &str) -> Result<(), String> {
     }
 }
 
-fn validate_domain(value: &str) -> Result<(), String> {
+pub(crate) fn validate_domain(value: &str) -> Result<(), String> {
     if value.trim() != value {
         return Err(String::from(
             "hosts domain must not contain surrounding whitespace",
@@ -151,11 +151,13 @@ fn validate_domain(value: &str) -> Result<(), String> {
     if value.len() > 253 {
         return Err(format!("hosts domain is too long: {value}"));
     }
-    if value
-        .chars()
-        .any(|character| character.is_whitespace() || character.is_control() || character == '#')
-    {
-        return Err(format!("hosts domain contains unsafe characters: {value}"));
+    if value.chars().any(|character| {
+        !character.is_ascii_alphanumeric()
+            && character != '.'
+            && character != '-'
+            && character != '_'
+    }) {
+        return Err(format!("hosts domain contains invalid characters: {value}"));
     }
     Ok(())
 }
@@ -218,6 +220,11 @@ mod tests {
     fn validate_entries_rejects_injected_domain() {
         assert!(validate_entries(&[entry("mysql.local\n1.2.3.4 evil", "127.77.0.10")]).is_err());
         assert!(validate_entries(&[entry("mysql.local # evil", "127.77.0.10")]).is_err());
+    }
+
+    #[test]
+    fn validate_entries_rejects_quoted_domain() {
+        assert!(validate_entries(&[entry("mysql.example.internal\"", "127.77.0.10")]).is_err());
     }
 
     #[test]

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.18 - 2026-07-15
+
+- Rejected malformed service domains before saving profiles or writing hosts entries, preventing accidental trailing quotes from bypassing local hostname mappings.
+- Added per-service SSH `direct-tcpip` preflight and runtime forwarding status so policy failures such as `AdministrativelyProhibited` are reported on the affected service.
+- Stopped status refreshes from probing local listeners and falsely marking services healthy before the SSH server accepts their forwarding channels.
+- Treated missing and non-healthy service states as workbench errors, with structured forwarding logs and regression coverage across the Rust and Vue layers.
+
 ## v0.1.17 - 2026-07-12
 
 - Rebuilt the desktop interface around the new TunnelDesk visual system, including the app shell, workbench, diagnostics, logs, tunnel, service, and settings pages.
